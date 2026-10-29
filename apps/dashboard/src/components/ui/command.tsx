@@ -1,21 +1,22 @@
 "use client";
 
-import React from "react";
 import { type DialogProps } from "@radix-ui/react-dialog";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import { Command as CommandPrimitive } from "cmdk";
+import React from "react";
 
 import { cn } from "@/lib/utils";
-import { Dialog, DialogBody, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent } from "./dialog";
 
-const Command = React.forwardRef<
+const Command: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive>> = forwardRefIfNeeded<
   React.ElementRef<typeof CommandPrimitive>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive>
 >(({ className, ...props }, ref) => (
   <CommandPrimitive
     ref={ref}
     className={cn(
-      "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
+      "stack-scope flex h-full w-full flex-col overflow-hidden rounded-md bg-white text-popover-foreground dark:bg-popover",
       className
     )}
     {...props}
@@ -23,7 +24,7 @@ const Command = React.forwardRef<
 ));
 Command.displayName = CommandPrimitive.displayName;
 
-interface CommandDialogProps extends DialogProps {}
+type CommandDialogProps = {} & DialogProps
 
 const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
   return (
@@ -39,7 +40,7 @@ const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
   );
 };
 
-const CommandInput = React.forwardRef<
+const CommandInput: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>> = forwardRefIfNeeded<
   React.ElementRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
@@ -58,7 +59,7 @@ const CommandInput = React.forwardRef<
 
 CommandInput.displayName = CommandPrimitive.Input.displayName;
 
-const CommandList = React.forwardRef<
+const CommandList: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>> = forwardRefIfNeeded<
   React.ElementRef<typeof CommandPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
 >(({ className, ...props }, ref) => (
@@ -71,7 +72,7 @@ const CommandList = React.forwardRef<
 
 CommandList.displayName = CommandPrimitive.List.displayName;
 
-const CommandEmpty = React.forwardRef<
+const CommandEmpty: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive.Empty>> = forwardRefIfNeeded<
   React.ElementRef<typeof CommandPrimitive.Empty>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Empty>
 >((props, ref) => (
@@ -84,7 +85,7 @@ const CommandEmpty = React.forwardRef<
 
 CommandEmpty.displayName = CommandPrimitive.Empty.displayName;
 
-const CommandGroup = React.forwardRef<
+const CommandGroup: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive.Group>> = forwardRefIfNeeded<
   React.ElementRef<typeof CommandPrimitive.Group>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Group>
 >(({ className, ...props }, ref) => (
@@ -100,7 +101,7 @@ const CommandGroup = React.forwardRef<
 
 CommandGroup.displayName = CommandPrimitive.Group.displayName;
 
-const CommandSeparator = React.forwardRef<
+const CommandSeparator: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive.Separator>> = forwardRefIfNeeded<
   React.ElementRef<typeof CommandPrimitive.Separator>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Separator>
 >(({ className, ...props }, ref) => (
@@ -112,7 +113,7 @@ const CommandSeparator = React.forwardRef<
 ));
 CommandSeparator.displayName = CommandPrimitive.Separator.displayName;
 
-const CommandItem = React.forwardRef<
+const CommandItem: React.FC<React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>> = forwardRefIfNeeded<
   React.ElementRef<typeof CommandPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>
 >(({ className, ...props }, ref) => (
@@ -147,11 +148,11 @@ CommandShortcut.displayName = "CommandShortcut";
 export {
   Command,
   CommandDialog,
-  CommandInput,
-  CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
-  CommandShortcut,
+  CommandList,
   CommandSeparator,
+  CommandShortcut,
 };

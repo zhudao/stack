@@ -1,7 +1,7 @@
 'use client';
 
 
-// import { SignIn } from "@stackframe/stack";
+// import { SignIn } from "@hexclave/next";
 
 // export default function DefaultSignIn() {
 //   return <SignIn fullPage />;
@@ -10,7 +10,7 @@
 // --------------------------------------------
 
 
-// import { useStackApp } from "@stackframe/stack";
+// import { useStackApp } from "@hexclave/next";
 
 // export default function CustomOAuthSignIn() {
 //   const app = useStackApp();
@@ -28,7 +28,7 @@
 
 // --------------------------------------------
 
-// import { useStackApp } from "@stackframe/stack";
+// import { useStackApp } from "@hexclave/next";
 // import { useState } from "react";
 
 // export default function CustomCredentialSignIn() {
@@ -42,11 +42,11 @@
 //       setError('Please enter your password');
 //       return;
 //     }
-//     // this will redirect to app.urls.afterSignIn if successful, you can customize it in the StackServerApp constructor
-//     const errorCode = await app.signInWithCredential({ email, password });
+//     // this redirects to your configured post-sign-in destination on success
+//     const result = await app.signInWithCredential({ email, password });
 //     // It is better to handle each error code separately, but we will just show the error code directly for simplicity here
-//     if (errorCode) {
-//       setError(errorCode.message);
+//     if (result.status === 'error') {
+//       setError(result.error.message);
 //     }
 //   };
 
@@ -63,7 +63,7 @@
 // --------------------------------------------
 
 
-import { useStackApp } from "@stackframe/stack";
+import { useStackApp } from "@hexclave/next";
 import { useState } from "react";
 
 export default function CustomCredentialSignIn() {
@@ -73,11 +73,11 @@ export default function CustomCredentialSignIn() {
   const app = useStackApp();
 
   const onSubmit = async () => {
-    // this will redirect to app.urls.afterSignIn if successful, you can customize it in the StackServerApp constructor
-    const errorCode = await app.sendMagicLinkEmail(email);
+    // this redirects to your configured post-sign-in destination on success
+    const result = await app.sendMagicLinkEmail(email);
     // It is better to handle each error code separately, but we will just show the error code directly for simplicity here
-    if (errorCode) {
-      setError(errorCode.message);
+    if (result.status === 'error') {
+      setError(result.error.message);
     } else {
       setMessage('Magic link sent! Please check your email.');
     }

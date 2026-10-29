@@ -1,8 +1,8 @@
 "use client";
 
+import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
+import { useToast } from "@/components/ui";
 import { useEffect } from "react";
-import { useToast } from "./ui/use-toast";
-import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 
 const neverNotify = [
   "Failed to fetch RSC payload",
@@ -12,10 +12,10 @@ const neverNotify = [
 let callbacks: ((prop: string, args: any[]) => void)[] = [];
 
 if (process.env.NODE_ENV === 'development' && isBrowserLike()) {
-  for (const prop of ["warn", "error"] as const) {
+  for (const prop of ["error"] as const) {
     const original = console[prop];
     console[prop] = (...args) => {
-      original(...args, new Error("This error was caught by DevErrorNotifier, and the original stacktrace is below."));
+      original(...args);
       if (!neverNotify.some((msg) => args.some((arg) => `${arg}`.includes(msg)))) {
         callbacks.forEach((cb) => cb(prop, args));
       }
@@ -28,9 +28,12 @@ export function DevErrorNotifier() {
 
   useEffect(() => {
     const cb = (prop: string, args: any[]) => {
-      toast.toast({
-        title: `[DEV] console.${prop} called!`,
-        description: `Please check the browser console. ${args.join(" ")}`,
+      setTimeout(() => {
+        toast.toast({
+          title: `[DEV] console.${prop} called!`,
+          description: `Please check the browser console. ${args.join(" ").slice(0, 100)}...`,
+          variant: "destructive",
+        });
       });
     };
     callbacks.push(cb);

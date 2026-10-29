@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-import { StackProvider, StackTheme } from "@stackframe/stack";
+import { StackProvider, StackTheme } from "@hexclave/next";
 import { Inter } from "next/font/google";
-import { stackServerApp } from "../stack";
+import { hexclaveServerApp } from "../hexclave";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "E-Commerce Example with Stack Auth",
-  description: "Created with Stack Auth",
+  title: "E-Commerce Example with Hexclave",
+  description: "Created with Hexclave",
 };
 
 export default function RootLayout({
@@ -18,9 +18,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}><StackProvider app={stackServerApp}><StackTheme>
+      <body className={inter.className}><StackProvider app={hexclaveServerApp}><StackTheme>
         <main style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "stretch" }}>
-          <h1>Stack Auth - E-Commerce Example</h1>
+          <h1>Hexclave - E-Commerce Example</h1>
           {children}
         </main>
       </StackTheme></StackProvider></body>

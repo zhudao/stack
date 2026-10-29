@@ -1,40 +1,45 @@
 'use client';
-import { ApiKey } from '@stackframe/stack';
-import { ColumnDef, Row, Table } from "@tanstack/react-table";
+import { InternalApiKey } from '@hexclave/next';
+import { ActionCell, ActionDialog, Badge, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
+import {
+  DataGrid,
+  useDataGridUrlState,
+  useDataSource,
+  type DataGridColumnDef,
+} from "@hexclave/dashboard-ui-components";
 import { useMemo, useState } from "react";
-import { ActionDialog } from "../action-dialog";
-import { ActionCell, BadgeCell, DateCell, TextCell } from "./elements/cells";
-import { DataTableColumnHeader } from "./elements/column-header";
-import { DataTable } from "./elements/data-table";
-import { DataTableFacetedFilter } from "./elements/faceted-filter";
-import { SearchToolbarItem } from "./elements/toolbar-items";
-import { standardFilterFn } from "./elements/utils";
 
-type ExtendedApiKey = ApiKey & {
-  status: 'valid' | 'expired' | 'revoked',
+type ApiKeyStatus = 'valid' | 'expired' | 'revoked';
+type ApiKeyStatusFilter = 'all' | ApiKeyStatus;
+
+type ExtendedInternalApiKey = InternalApiKey & {
+  status: ApiKeyStatus,
 };
 
-function toolbarRender<TData>(table: Table<TData>) {
-  return (
-    <>
-      <SearchToolbarItem table={table} keyName="description" placeholder="Filter by description" />
-      <DataTableFacetedFilter
-        column={table.getColumn("status")}
-        title="Status"
-        options={['valid', 'expired', 'revoked'].map((provider) => ({
-          value: provider,
-          label: provider,
-        }))}
-      />
-    </>
-  );
+/** Matches previous `DateCell` + `ignoreAfterYears={50}` behaviour. */
+function formatApiKeyDateDisplay(date: Date) {
+  const ignoreAfterYears = 50;
+  const ignore = new Date(new Date().setFullYear(new Date().getFullYear() + ignoreAfterYears)) < date;
+  const timeString = date.toLocaleTimeString([], { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return ignore ? 'Never' : timeString;
 }
 
 function RevokeDialog(props: {
-  apiKey: ExtendedApiKey,
+  apiKey: ExtendedInternalApiKey,
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
+  const clientKeyText = props.apiKey.publishableClientKey?.lastFour
+    ? `client key *****${props.apiKey.publishableClientKey.lastFour}`
+    : null;
+  const serverKeyText = props.apiKey.secretServerKey?.lastFour
+    ? `server key *****${props.apiKey.secretServerKey.lastFour}`
+    : null;
+  const keysText = [clientKeyText, serverKeyText].filter(Boolean).join(" and ");
+  const confirmText = keysText
+    ? `Are you sure you want to revoke ${keysText}?`
+    : "Are you sure you want to revoke this API key?";
+
   return <ActionDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
@@ -44,19 +49,20 @@ function RevokeDialog(props: {
     okButton={{ label: "Revoke Key", onClick: async () => { await props.apiKey.revoke(); } }}
     confirmText="I understand this will unlink all the apps using this API key"
   >
-    {`Are you sure you want to revoke client key *****${props.apiKey.publishableClientKey?.lastFour} and server key *****${props.apiKey.secretServerKey?.lastFour}?`}
+    {confirmText}
   </ActionDialog>;
 }
 
-function Actions({ row }: { row: Row<ExtendedApiKey> }) {
+function Actions({ apiKey }: { apiKey: ExtendedInternalApiKey }) {
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
   return (
     <>
-      <RevokeDialog apiKey={row.original} open={isRevokeModalOpen} onOpenChange={setIsRevokeModalOpen} />
+      <RevokeDialog apiKey={apiKey} open={isRevokeModalOpen} onOpenChange={setIsRevokeModalOpen} />
       <ActionCell
-        invisible={row.original.status !== 'valid'}
-        dangerItems={[{
+        invisible={apiKey.status !== 'valid'}
+        items={[{
           item: "Revoke",
+          danger: true,
           onClick: () => setIsRevokeModalOpen(true),
         }]}
       />
@@ -64,55 +70,167 @@ function Actions({ row }: { row: Row<ExtendedApiKey> }) {
   );
 }
 
-const columns: ColumnDef<ExtendedApiKey>[] =  [
-  {
-    accessorKey: "description",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Description" />,
-    cell: ({ row }) => <TextCell size={300}>{row.original.description}</TextCell>,
-  },
-  {
-    accessorKey: "status",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-    cell: ({ row }) => <BadgeCell badges={[row.original.status]} />,
-    filterFn: standardFilterFn,
-  },
-  {
-    accessorKey: "clientKey",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Client Key" />,
-    cell: ({ row }) => <TextCell>*******{row.original.publishableClientKey?.lastFour}</TextCell>,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "serverKey",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Server Key" />,
-    cell: ({ row }) => <TextCell>*******{row.original.secretServerKey?.lastFour}</TextCell>,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "expiresAt",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Expires At" />,
-    cell: ({ row }) => <DateCell date={row.original.expiresAt} ignoreAfterYears={100} />
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => <Actions row={row} />,
-  },
-];
+const getColumns = (showPublishableClientKey: boolean): DataGridColumnDef<ExtendedInternalApiKey>[] => {
+  const baseColumns: DataGridColumnDef<ExtendedInternalApiKey>[] = [
+    {
+      id: "description",
+      header: "Description",
+      accessor: "description",
+      type: "string",
+      width: 300,
+      flex: 1,
+      renderCell: ({ row }) => (
+        <span className="block truncate" title={row.description}>{row.description}</span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      accessor: "status",
+      type: "string",
+      width: 120,
+      renderCell: ({ row }) => (
+        <Badge variant="secondary">{row.status}</Badge>
+      ),
+    },
+  ];
 
-export function ApiKeyTable(props: { apiKeys: ApiKey[] }) {
+  const clientKeyColumn: DataGridColumnDef<ExtendedInternalApiKey> = {
+    id: "clientKey",
+    header: "Client Key",
+    accessor: (row) => row.publishableClientKey?.lastFour,
+    type: "string",
+    sortable: false,
+    width: 160,
+    renderCell: ({ row }) => (
+      <span className="truncate">
+        {row.publishableClientKey?.lastFour ? `*******${row.publishableClientKey.lastFour}` : "—"}
+      </span>
+    ),
+  };
+
+  const serverKeyColumn: DataGridColumnDef<ExtendedInternalApiKey> = {
+    id: "serverKey",
+    header: "Server Key",
+    accessor: (row) => row.secretServerKey?.lastFour,
+    type: "string",
+    sortable: false,
+    width: 160,
+    renderCell: ({ row }) => (
+      <span className="truncate">
+        {row.secretServerKey?.lastFour ? `*******${row.secretServerKey.lastFour}` : "—"}
+      </span>
+    ),
+  };
+
+  const tailColumns: DataGridColumnDef<ExtendedInternalApiKey>[] = [
+    {
+      id: "expiresAt",
+      header: "Expires At",
+      accessor: "expiresAt",
+      type: "dateTime",
+      width: 180,
+      renderCell: ({ row }) => (
+        <span className="truncate">{formatApiKeyDateDisplay(row.expiresAt)}</span>
+      ),
+    },
+    {
+      id: "createdAt",
+      header: "Created At",
+      accessor: "createdAt",
+      type: "dateTime",
+      width: 180,
+      renderCell: ({ row }) => (
+        <span className="truncate">{formatApiKeyDateDisplay(row.createdAt)}</span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      width: 50,
+      minWidth: 50,
+      maxWidth: 50,
+      renderCell: ({ row }) => <Actions apiKey={row} />,
+    },
+  ];
+
+  return showPublishableClientKey
+    ? [...baseColumns, clientKeyColumn, serverKeyColumn, ...tailColumns]
+    : [...baseColumns, serverKeyColumn, ...tailColumns];
+};
+
+export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPublishableClientKey?: boolean }) {
+  const showPublishableClientKey = props.showPublishableClientKey ?? true;
+  const columns = useMemo(
+    () => getColumns(showPublishableClientKey),
+    [showPublishableClientKey],
+  );
+
+  // Grid state is initialized lazily on first mount; DataGrid tolerates columns
+  // whose ids vanish (clientKey toggle) so we do NOT reinit state when columns
+  // change — that would wipe user-adjusted widths/sort/search.
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "apikeys" });
+
+  // Default to "valid" so the page looks the same as before the DataGrid
+  // migration (the old faceted filter defaulted to ['valid']).
+  const [statusFilter, setStatusFilter] = useState<ApiKeyStatusFilter>("valid");
+
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => ({
       ...apiKey,
       status: ({ 'valid': 'valid', 'manually-revoked': 'revoked', 'expired': 'expired' } as const)[apiKey.whyInvalid() || 'valid'],
-    } satisfies ExtendedApiKey));
-    // first soft based on status, then by expiresAt
+    } satisfies ExtendedInternalApiKey));
+    // first sort based on status, then by createdAt
     return keys.sort((a, b) => {
       if (a.status === b.status) {
-        return a.expiresAt < b.expiresAt ? 1 : -1;
+        return a.createdAt < b.createdAt ? 1 : -1;
       }
       return a.status === 'valid' ? -1 : 1;
     });
   }, [props.apiKeys]);
 
-  return <DataTable data={extendedApiKeys} columns={columns} toolbarRender={toolbarRender} />;
+  const filteredApiKeys = useMemo(
+    () => statusFilter === "all" ? extendedApiKeys : extendedApiKeys.filter((k) => k.status === statusFilter),
+    [extendedApiKeys, statusFilter],
+  );
+
+  const gridData = useDataSource({
+    data: filteredApiKeys,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      isLoading={gridData.isLoading}
+      state={gridState}
+      onChange={setGridState}
+      toolbarExtra={
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ApiKeyStatusFilter)}>
+          <SelectTrigger className="h-8 w-[140px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="valid">Valid</SelectItem>
+            <SelectItem value="expired">Expired</SelectItem>
+            <SelectItem value="revoked">Revoked</SelectItem>
+          </SelectContent>
+        </Select>
+      }
+      footer={false}
+      fillHeight={false}
+    />
+  );
 }

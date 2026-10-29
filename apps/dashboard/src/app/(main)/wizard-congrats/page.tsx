@@ -1,16 +1,16 @@
-import { InlineCode } from "@/components/ui/inline-code";
 import { Confetti } from "@/components/confetti";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import Typography from "@/components/ui/typography";
+import { Card, CardContent, CardFooter, CardHeader, InlineCode, Typography } from "@/components/ui";
 import Actions from "./actions";
+import PostHog from "./posthog";
 
 export const metadata = {
-  title: "Projects",
+  title: "Setup complete!",
 };
 
 export default function WizardCongratsPage() {
   return (
     <>
+      <PostHog />
       <Confetti />
       <style>
         {`
@@ -30,7 +30,7 @@ export default function WizardCongratsPage() {
         <Card className="max-w-lg">
           <CardHeader>
             <Typography type='h1'>
-                Congrats! 🎉
+              Congrats! 🎉
             </Typography>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">

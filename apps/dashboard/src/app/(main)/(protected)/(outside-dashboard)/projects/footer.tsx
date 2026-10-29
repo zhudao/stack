@@ -1,6 +1,5 @@
 import { Link } from "@/components/link";
-import { Separator } from "@/components/ui/separator";
-import Typography from "@/components/ui/typography";
+import { Separator, Typography } from "@/components/ui";
 import { FaDiscord, FaGithub, FaLinkedin } from "react-icons/fa";
 
 export default function Footer () {
@@ -8,13 +7,13 @@ export default function Footer () {
     <footer>
       <Separator />
 
-      <div className="flex flex-col md:flex-row p-4 gap-4">
+      <div className="flex flex-col md:flex-row p-4 gap-4 backdrop-blur-md bg-slate-200/20 dark:bg-black/20">
         <div className="flex flex-col gap-4 md:flex-1">
           <ul className="flex gap-4 flex-grow">
             {[
-              { href: "https://discord.stack-auth.com/", icon: FaDiscord },
+              { href: "https://discord.hexclave.com/", icon: FaDiscord },
               { href: "https://www.linkedin.com/company/stackframe-inc", icon: FaLinkedin },
-              { href: "https://github.com/stack-auth/stack", icon: FaGithub },
+              { href: "https://github.com/hexclave/hexclave", icon: FaGithub },
             ].map(({ href, icon: Icon }) => (
               <li key={href}>
                 <Link href={href}>
@@ -25,15 +24,12 @@ export default function Footer () {
           </ul>
         </div>
 
-        <div className="flex text-sm md:flex-1 md:justify-center">
-          <Typography variant="secondary" type='label'>© 2024 Stackframe Inc.</Typography>
-        </div>
-
-        <div className="flex gap-4 md:flex-1 md:justify-end">
+        <div className="flex gap-4 md:flex-1 md:justify-end flex-wrap">
           {[
-            { href: "https://stack-auth.com", label: "Home" },
-            { href: "https://docs.stack-auth.com", label: "Docs" },
-            { href: "mailto:team@stack-auth.com", label: "Contact us" },
+            { href: "https://hexclave.com", label: "Home" },
+            { href: "https://www.iubenda.com/privacy-policy/19290387", label: "Privacy policy" },
+            { href: "https://www.iubenda.com/privacy-policy/19290387/cookie-policy", label: "Cookie policy" },
+            { href: "https://www.iubenda.com/terms-and-conditions/19290387", label: "Terms & conditions" },
           ].map(({ href, label }) => (
             <Link key={label} href={href}>
               <Typography variant="secondary" type='label'>{label}</Typography>

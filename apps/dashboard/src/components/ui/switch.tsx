@@ -1,22 +1,23 @@
 "use client";
 
 import React from "react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import * as SwitchPrimitives from "@radix-ui/react-switch";
 
 import { cn } from "@/lib/utils";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
 import { Spinner } from "./spinner";
 
-interface OriginalSwitchProps extends React.ComponentProps<typeof SwitchPrimitives.Root> {}
+type OriginalSwitchProps = {} & React.ComponentProps<typeof SwitchPrimitives.Root>
 
-const OriginalSwitch = React.forwardRef<
+const OriginalSwitch = forwardRefIfNeeded<
   React.ElementRef<typeof SwitchPrimitives.Root>,
   OriginalSwitchProps
 >(({ className, ...props }, ref) => (
   <SwitchPrimitives.Root
     className={cn(
-      "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input",
+      "stack-scope peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-zinc-200 dark:data-[state=unchecked]:bg-input",
       className
     )}
     {...props}
@@ -24,19 +25,19 @@ const OriginalSwitch = React.forwardRef<
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        "pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"
+        "pointer-events-none block h-4 w-4 rounded-full bg-white dark:bg-background shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"
       )}
     />
   </SwitchPrimitives.Root>
 ));
 OriginalSwitch.displayName = SwitchPrimitives.Root.displayName;
-interface AsyncSwitchProps extends OriginalSwitchProps {
+type AsyncSwitchProps = {
   onCheckedChange?: (checked: boolean) => Promise<void> | void,
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => Promise<void> | void,
   loading?: boolean,
-}
+} & OriginalSwitchProps
 
-const Switch = React.forwardRef<
+const Switch = forwardRefIfNeeded<
   React.ElementRef<typeof SwitchPrimitives.Root>,
   AsyncSwitchProps
 >(({ loading: loadingProp, onClick, onCheckedChange, ...props }, ref) => {
@@ -72,3 +73,4 @@ const Switch = React.forwardRef<
 Switch.displayName = "Switch";
 
 export { Switch };
+

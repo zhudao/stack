@@ -1,6 +1,9 @@
-export default [
+import { defineWorkspace } from 'vitest/config';
+
+export default defineWorkspace([
+  'configs',
   'packages/*',
   'apps/*',
-  'examples/*',
   'docs',
-];
+  'examples/*',
+]);

@@ -1,54 +1,62 @@
 "use client";
+import { PermissionTable } from "@/components/data-table/permission-table";
+import { SmartFormDialog } from "@/components/form-dialog";
+import { PermissionListField } from "@/components/permission-field";
+import { DesignButton } from "@/components/design-components";
 import React from "react";
 import * as yup from "yup";
-import { useAdminApp } from "../use-admin-app";
-import { Button } from "@/components/ui/button";
-import { PermissionListField } from "@/components/permission-field";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
-import { SmartFormDialog } from "@/components/form-dialog";
-import { TeamPermissionTable } from "@/components/data-table/team-permission-table";
+import { useAdminApp } from "../use-admin-app";
 
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useTeamPermissionDefinitions();
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);
+  const [tableVersion, setTableVersion] = React.useState(0);
 
   return (
-    <PageLayout
-      title="Team Permissions"
-      actions={
-        <Button onClick={() => setCreatePermissionModalOpen(true)}>
-          Create Permission
-        </Button>
-      }>
+    <AppEnabledGuard appId="rbac">
+      <PageLayout
+        title="Team Permissions"
+        actions={
+          <DesignButton onClick={() => setCreatePermissionModalOpen(true)}>
+            Create Permission
+          </DesignButton>
+        }
+      >
+        <PermissionTable
+          permissionType="team"
+          version={tableVersion}
+        />
 
-      <TeamPermissionTable permissions={permissions}/>
-
-      <CreateDialog
-        open={createPermissionModalOpen}
-        onOpenChange={setCreatePermissionModalOpen}
-      />
-    </PageLayout>
+        <CreateDialog
+          open={createPermissionModalOpen}
+          onOpenChange={setCreatePermissionModalOpen}
+          onCreated={() => setTableVersion((v) => v + 1)}
+        />
+      </PageLayout>
+    </AppEnabledGuard>
   );
 }
 
 function CreateDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
+  onCreated?: () => void,
 }) {
-  const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useTeamPermissionDefinitions();
+  const hexclaveAdminApp = useAdminApp();
+  const teamPermissions = hexclaveAdminApp.useTeamPermissionDefinitions();
+  const combinedPermissions = [...teamPermissions, ...hexclaveAdminApp.useProjectPermissionDefinitions()];
 
   const formSchema = yup.object({
-    id: yup.string().required()
-      .notOneOf(permissions.map((p) => p.id), "ID already exists")
+    id: yup.string().defined()
+      .notOneOf(combinedPermissions.map((p) => p.id), "ID already exists")
       .matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":" and "_" are allowed')
       .label("ID"),
     description: yup.string().label("Description"),
-    containedPermissionIds: yup.array().of(yup.string().required()).required().default([]).meta({
+    containedPermissionIds: yup.array().of(yup.string().defined()).defined().default([]).meta({
       stackFormFieldRender: (props) => (
-        <PermissionListField {...props} permissions={permissions} type="new" />
+        <PermissionListField {...props} permissions={teamPermissions} type="new" />
       ),
     }),
   });
@@ -60,11 +68,12 @@ function CreateDialog(props: {
     formSchema={formSchema}
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
-      await stackAdminApp.createTeamPermissionDefinition({
+      await hexclaveAdminApp.createTeamPermissionDefinition({
         id: values.id,
         description: values.description,
         containedPermissionIds: values.containedPermissionIds,
       });
+      props.onCreated?.();
     }}
     cancelButton
   />;

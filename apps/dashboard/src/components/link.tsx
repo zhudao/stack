@@ -1,41 +1,51 @@
 'use client';
 
-// eslint-disable-next-line
-import NextLink from 'next/link';
-import { confirmAlertMessage, useRouter, useRouterConfirm } from "./router";
-import { cn } from "@/lib/utils";
+import NextLink from 'next/link'; // eslint-disable-line no-restricted-imports
+
+import { UrlPrefetcher } from '@/lib/prefetch/url-prefetcher';
+import React from "react";
+import { cn } from "../lib/utils";
+import { useRouter, useRouterConfirm } from "./router";
 
 type LinkProps = {
-  href: string,
+  href: string | URL,
   children: React.ReactNode,
   className?: string,
   target?: string,
-  onClick?: () => void,
-  prefetch?: boolean,
+  rel?: string,
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void,
+  style?: React.CSSProperties,
+  scroll?: boolean,
+  prefetch?: boolean | "auto",
+  title?: string,
 };
 
-export function Link(props: LinkProps) {
+export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, children, prefetch, ...rest }, ref) => {
   const router = useRouter();
   const { needConfirm } = useRouterConfirm();
 
   return <NextLink
-    href={props.href}
-    target={props.target}
-    className={props.className}
-    prefetch={props.prefetch}
+    ref={ref}
+    href={href}
+    prefetch={prefetch}
+    {...rest}
     onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
       if (needConfirm) {
+        // use our own router, which has a confirm dialog
         e.preventDefault();
-        props.onClick?.();
-        router.push(props.href);
+        onClick?.(e);
+        router.push(href.toString());
+      } else {
+        onClick?.(e);
       }
-      props.onClick?.();
     }}
   >
-    {props.children}
+    {prefetch !== false ? <UrlPrefetcher href={href} /> : null}
+    {children}
   </NextLink>;
 
-}
+});
+Link.displayName = 'Link';
 
 export function StyledLink(props: LinkProps) {
   return (

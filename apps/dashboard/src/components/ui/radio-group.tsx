@@ -1,18 +1,19 @@
 "use client";
 
-import React from "react";
 import { CheckIcon } from "@radix-ui/react-icons";
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
+import React from "react";
 
 import { cn } from "@/lib/utils";
 
-const RadioGroup = React.forwardRef<
+const RadioGroup = forwardRefIfNeeded<
   React.ElementRef<typeof RadioGroupPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Root>
 >(({ className, ...props }, ref) => {
   return (
     <RadioGroupPrimitive.Root
-      className={cn("grid gap-2", className)}
+      className={cn("stack-scope grid gap-2", className)}
       {...props}
       ref={ref}
     />
@@ -20,7 +21,7 @@ const RadioGroup = React.forwardRef<
 });
 RadioGroup.displayName = RadioGroupPrimitive.Root.displayName;
 
-const RadioGroupItem = React.forwardRef<
+const RadioGroupItem = forwardRefIfNeeded<
   React.ElementRef<typeof RadioGroupPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item>
 >(({ className, ...props }, ref) => {
@@ -42,3 +43,4 @@ const RadioGroupItem = React.forwardRef<
 RadioGroupItem.displayName = RadioGroupPrimitive.Item.displayName;
 
 export { RadioGroup, RadioGroupItem };
+

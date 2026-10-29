@@ -1,16 +1,18 @@
 import "../polyfills";
 
+import { Tenancy, getSoleTenancyFromProjectBranch, } from "@/lib/tenancies";
+import { CrudSchema, CrudTypeOf, CrudlOperation } from "@hexclave/shared/dist/crud";
+import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupValidate } from "@hexclave/shared/dist/schema-fields";
+import { typedIncludes } from "@hexclave/shared/dist/utils/arrays";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { FilterUndefined } from "@hexclave/shared/dist/utils/objects";
+import { deindent, typedToLowercase } from "@hexclave/shared/dist/utils/strings";
+import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import * as yup from "yup";
-import { SmartRouteHandler, routeHandlerTypeHelper, createSmartRouteHandler } from "./smart-route-handler";
-import { CrudSchema, CrudTypeOf, CrudlOperation } from "@stackframe/stack-shared/dist/crud";
-import { FilterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { deindent, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { SmartRequestAuth } from "./smart-request";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { SmartRouteHandler, createSmartRouteHandler, routeHandlerTypeHelper } from "./smart-route-handler";
 
 type GetAdminKey<T extends CrudTypeOf<any>, K extends Capitalize<CrudlOperation>> = K extends keyof T["Admin"] ? T["Admin"][K] : void;
 
@@ -71,10 +73,11 @@ type CrudHandlerDirectByAccess<
 > = {
   [K in L as `${Uncapitalize<A>}${K}`]: (options:
     & {
-      project: ProjectsCrud["Admin"]["Read"],
       user?: UsersCrud["Admin"]["Read"],
+      allowedErrorTypes?: (new (...args: any) => any)[],
     }
-    & ({} extends yup.InferType<QS> ? {} : { query: yup.InferType<QS> })
+    & ({ project: Omit<ProjectsCrud["Admin"]["Read"], "config">, branchId: string } | { tenancy: Tenancy })
+    & (({} extends yup.InferType<QS> ? {} : never) | { query: yup.InferType<QS> })
     & (L extends "Create" | "List" ? Partial<yup.InferType<PS>> : yup.InferType<PS>)
     & (K extends "Read" | "List" | "Delete" ? {} : (K extends keyof T[A] ? { data: T[A][K] } : "TYPE ERROR: something went wrong here"))
   ) => Promise<(K extends "List" ? ("List" extends keyof T[A] ? T[A]["List"] : void) : (K extends "Delete" ? void : ("Read" extends keyof T[A] ? T[A]["Read"] : void)))>
@@ -130,9 +133,16 @@ export function createCrudHandlers<
           const output =
             crudOperation === "List"
               ? yupObject({
-                items: yupArray(read).required(),
-                is_paginated: yupBoolean().oneOf([false]).required().meta({ openapiField: { hidden: true } }),
-              }).required()
+                items: yupArray(read).defined(),
+                is_paginated: yupBoolean().defined().meta({ openapiField: { hidden: true } }),
+                pagination: yupObject({
+                  next_cursor: yupString().nullable().defined().meta({ openapiField: { description: "The cursor to fetch the next page of results. null if there is no next page.", exampleValue: 'b3d396b8-c574-4c80-97b3-50031675ceb2' } }),
+                }).when('is_paginated', {
+                  is: true,
+                  then: (schema) => schema.defined(),
+                  otherwise: (schema) => schema.optional(),
+                }),
+              }).defined()
               : crudOperation === "Delete"
                 ? yupMixed<any>().oneOf([undefined])
                 : read;
@@ -154,9 +164,8 @@ export function createCrudHandlers<
               adminSchemas,
               invoke: async (options: { params: yup.InferType<PS> | Partial<yup.InferType<PS>>, query: yup.InferType<QS>, data: any, auth: SmartRequestAuth }) => {
                 const actualParamsSchema = typedIncludes(["List", "Create"], crudOperation) ? paramsSchema.partial() : paramsSchema;
-                const paramsValidated = await validate(options.params, actualParamsSchema, "Params validation");
-
-                const adminData = await validate(options.data, adminSchemas.input, "Input validation");
+                const paramsValidated = await validate(options.params, actualParamsSchema, options.auth.user ?? null, "Params validation");
+                const adminData = await validate(options.data, adminSchemas.input, options.auth.user ?? null, "Input validation");
 
                 await optionsAsPartial.onPrepare?.({
                   params: paramsValidated,
@@ -171,8 +180,8 @@ export function createCrudHandlers<
                   query: options.query,
                 });
 
-                const resultAdminValidated = await validate(result, adminSchemas.output, "Result admin validation");
-                const resultAccessValidated = await validate(resultAdminValidated, accessSchemas.output, `Result ${accessType} validation`);
+                const resultAdminValidated = await validate(result, adminSchemas.output, options.auth.user ?? null, "Result admin validation");
+                const resultAccessValidated = await validate(resultAdminValidated, accessSchemas.output, options.auth.user ?? null, `Result ${accessType} validation`);
 
                 return resultAccessValidated;
               },
@@ -186,20 +195,18 @@ export function createCrudHandlers<
             const frw = routeHandlerTypeHelper({
               request: yupObject({
                 auth: yupObject({
-                  type: yupString().oneOf([accessType]).required(),
-                }).required(),
-                url: yupString().required(),
-                method: yupString().oneOf([httpMethod]).required(),
+                  type: yupString().oneOf([accessType]).defined(),
+                }).defined(),
+                url: yupString().defined(),
+                method: yupString().oneOf([httpMethod]).defined(),
                 body: accessSchemas.input,
                 params: typedIncludes(["List", "Create"], crudOperation) ? paramsSchema.partial() : paramsSchema,
                 query: (options.querySchema ?? yupObject({})) as QuerySchema,
               }),
               response: yupObject({
-                statusCode: yupNumber().oneOf([crudOperation === "Create" ? 201 : 200]).required(),
-                headers: yupObject({
-                  location: yupArray(yupString().required()).default([]),
-                }),
-                bodyType: yupString().oneOf([crudOperation === "Delete" ? "success" : "json"]).required(),
+                statusCode: yupNumber().oneOf([crudOperation === "Create" ? 201 : 200]).defined(),
+                headers: yupObject({}),
+                bodyType: yupString().oneOf([crudOperation === "Delete" ? "success" : "json"]).defined(),
                 body: accessSchemas.output,
               }),
               handler: async (req, fullReq) => {
@@ -214,9 +221,7 @@ export function createCrudHandlers<
 
                 return {
                   statusCode: crudOperation === "Create" ? 201 : 200,
-                  headers: {
-                    location: crudOperation === "Create" ? [req.url] : [],
-                  },
+                  headers: {},
                   bodyType: crudOperation === "Delete" ? "success" : "json",
                   body: result,
                 };
@@ -235,24 +240,49 @@ export function createCrudHandlers<
           ...[...aat].map(([accessType, { invoke }]) => (
             [
               `${accessType}${crudOperation}`,
-              async ({ user, project, data, query, ...params }: yup.InferType<PS> & {
+              async ({ user, project, branchId, tenancy, data, query, allowedErrorTypes, ...params }: yup.InferType<PS> & {
                 query?: yup.InferType<QS>,
-                project: ProjectsCrud["Admin"]["Read"],
                 user?: UsersCrud["Admin"]["Read"],
+                project?: Omit<ProjectsCrud["Admin"]["Read"], "config">,
+                branchId?: string,
+                tenancy?: Tenancy,
                 data: any,
+                allowedErrorTypes?: (new (...args: any) => any)[],
               }) => {
+                if (tenancy) {
+                  if (project || branchId) {
+                    throw new HexclaveAssertionError("Must specify either project and branchId or tenancy, not both");
+                  }
+                  project = tenancy.project;
+                  branchId = tenancy.branchId;
+                } else if (project) {
+                  if (!branchId) {
+                    throw new HexclaveAssertionError("Must specify branchId when specifying project");
+                  }
+                  tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
+                } else {
+                  throw new HexclaveAssertionError("Must specify either project and branchId or tenancy");
+                }
+
                 try {
-                  return await invoke({
-                    params,
-                    query: query ?? {} as any,
-                    data,
-                    auth: {
-                      user,
-                      project,
-                      type: accessType,
-                    },
+                  return await traceSpan("invoking CRUD handler programmatically", async () => {
+                    return await invoke({
+                      params,
+                      query: query ?? {} as any,
+                      data,
+                      auth: {
+                        user,
+                        project: project,
+                        branchId: branchId,
+                        tenancy: tenancy,
+                        type: accessType,
+                      },
+                    });
                   });
                 } catch (error) {
+                  if (allowedErrorTypes?.some((a) => error instanceof a) || error instanceof HexclaveAssertionError) {
+                    throw error;
+                  }
                   throw new CrudHandlerInvocationError(error);
                 }
               },
@@ -269,23 +299,23 @@ export class CrudHandlerInvocationError extends Error {
   }
 }
 
-async function validate<T>(obj: unknown, schema: yup.ISchema<T>, name: string): Promise<T> {
+async function validate<T>(obj: unknown, schema: yup.ISchema<T>, currentUser: UsersCrud["Admin"]["Read"] | null, validationDescription: string): Promise<T> {
   try {
-    return await schema.validate(obj, {
+    return await yupValidate(schema, obj, {
       abortEarly: false,
       stripUnknown: true,
+      currentUserId: currentUser?.id ?? null,
     });
   } catch (error) {
     if (error instanceof yup.ValidationError) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         deindent`
-          ${name} failed in CRUD handler.
+          ${validationDescription} failed in CRUD handler.
           
           Errors:
             ${error.errors.join("\n")}
         `,
-        { obj: JSON.stringify(obj), schema },
-        { cause: error }
+        { obj: obj, schema, cause: error },
       );
     }
     throw error;

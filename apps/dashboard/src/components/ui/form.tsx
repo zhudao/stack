@@ -1,6 +1,9 @@
-import React from "react";
+'use client';
+
 import * as LabelPrimitive from "@radix-ui/react-label";
 import { Slot } from "@radix-ui/react-slot";
+import React from "react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import {
   Controller,
   ControllerProps,
@@ -10,9 +13,9 @@ import {
   useFormContext,
 } from "react-hook-form";
 
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { cn } from "@/lib/utils";
-import { Label, SpanLabel } from "@/components/ui/label";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { SpanLabel } from "./label";
 
 const Form = FormProvider;
 
@@ -44,7 +47,7 @@ const useFormField = () => {
   const { getFieldState, formState } = useFormContext();
 
   if (!fieldContext) {
-    throw new StackAssertionError("useFormField should be used within <FormField>");
+    throw new HexclaveAssertionError("useFormField should be used within <FormField>");
   }
 
   const fieldState = getFieldState(fieldContext.name, formState);
@@ -70,7 +73,7 @@ const FormItemContext = React.createContext<FormItemContextValue>(
   {} as FormItemContextValue
 );
 
-const FormItem = React.forwardRef<
+const FormItem = forwardRefIfNeeded<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => {
@@ -84,7 +87,7 @@ const FormItem = React.forwardRef<
 });
 FormItem.displayName = "FormItem";
 
-const FormLabel = React.forwardRef<
+const FormLabel = forwardRefIfNeeded<
   React.ElementRef<typeof LabelPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
 >(({ className, ...props }, ref) => {
@@ -100,7 +103,7 @@ const FormLabel = React.forwardRef<
 });
 FormLabel.displayName = "FormLabel";
 
-const FormControl = React.forwardRef<
+const FormControl = forwardRefIfNeeded<
   React.ElementRef<typeof Slot>,
   React.ComponentPropsWithoutRef<typeof Slot>
 >(({ ...props }, ref) => {
@@ -122,7 +125,7 @@ const FormControl = React.forwardRef<
 });
 FormControl.displayName = "FormControl";
 
-const FormDescription = React.forwardRef<
+const FormDescription = forwardRefIfNeeded<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => {
@@ -139,7 +142,7 @@ const FormDescription = React.forwardRef<
 });
 FormDescription.displayName = "FormDescription";
 
-const FormMessage = React.forwardRef<
+const FormMessage = forwardRefIfNeeded<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, children, ...props }, ref) => {
@@ -164,12 +167,8 @@ const FormMessage = React.forwardRef<
 FormMessage.displayName = "FormMessage";
 
 export {
-  useFormField,
-  Form,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormDescription,
-  FormMessage,
-  FormField,
+  Form, FormControl,
+  FormDescription, FormField, FormItem,
+  FormLabel, FormMessage, useFormField
 };
+

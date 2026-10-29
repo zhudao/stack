@@ -3,33 +3,42 @@ name: Lint & build
 on:
   push:
     branches:
-      - dev
       - main
+      - dev
   pull_request:
-    branches:
-      - dev
-      - main
+
+# A concurrency group only ever runs one run at a time, so the sha is part of the group on main/dev:
+# otherwise consecutive dev pushes queue behind each other (and GitHub cancels the older queued run),
+# so one slow or hung run silently skips CI for every commit after it. PRs and feature branches stay
+# grouped per ref, where cancelling superseded runs is what we want.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
   lint_and_build:
+    timeout-minutes: 60
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [24]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-            version: 9.1.2
+      - name: Activate integrity-pinned pnpm
+        run: |
+          corepack enable pnpm
+          corepack install
+
+      - name: Test installer bootstrap without dependencies
+        run: node --test-isolation=none --test scripts/check-package-manager.test.mjs
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -58,11 +67,60 @@ jobs:
       - name: Create .env.production.local file for examples/middleware
         run: cp examples/middleware/.env.development examples/middleware/.env.production.local
 
-      - name: Create .env.production.local file for examples/partial-prerendering
-        run: cp examples/partial-prerendering/.env.development examples/partial-prerendering/.env.production.local
+      - name: Create .env.production.local file for examples/supabase
+        run: cp examples/supabase/.env.development examples/supabase/.env.production.local
+
+      - name: Create .env.production.local file for examples/convex
+        run: cp examples/convex/.env.development examples/convex/.env.production.local
+
+      - name: Create .env.production.local file for apps/internal-tool
+        run: cp apps/internal-tool/.env.development apps/internal-tool/.env.production.local
 
       - name: Build
         run: pnpm build
         
       - name: Lint
         run: pnpm lint
+      
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Store Quetzal API key in packages/next/.env.local to prepare for code gen
+        run: echo "QUETZAL_API_KEY=${{ secrets.QUETZAL_API_KEY }}" > packages/next/.env.local
+
+      - name: Run code gen  # so we can check for uncommitted changes afterwards; `build` doesn't regenerate some committed files, eg. Quetzal
+        run: pnpm codegen
+      
+      - name: Check for uncommitted changes
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Error: There are uncommitted changes after build/lint/typecheck."
+            echo "Please commit all changes before pushing."
+            echo ""
+            echo "Files with uncommitted changes:"
+            git status --porcelain
+            echo ""
+            echo "Full git status:"
+            git status
+            echo ""
+            echo "Diff of changes:"
+            git diff
+            exit 1
+          fi
+      
+      - name: Check for uncommitted changes
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Error: There are uncommitted changes after build/lint/typecheck."
+            echo "Please commit all changes before pushing."
+            echo ""
+            echo "Files with uncommitted changes:"
+            git status --porcelain
+            echo ""
+            echo "Full git status:"
+            git status
+            echo ""
+            echo "Diff of changes:"
+            git diff
+            exit 1
+          fi

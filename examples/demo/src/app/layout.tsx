@@ -1,31 +1,28 @@
-import React from "react";
+import { StackProvider, StackTheme } from "@hexclave/next";
 import { Metadata } from "next";
-import { StackProvider, StackTheme } from "@stackframe/stack";
-import { stackServerApp } from "src/stack";
-import Provider from "src/components/provider";
 import Header from "src/components/header";
+import Provider from "src/components/provider";
+import { hexclaveServerApp } from "src/hexclave";
 import './global.css';
 
 export const metadata: Metadata = {
-  title: 'Stack Demo',
-  description: 'Example of using Stack as your authentication system.',
+  title: 'Hexclave Demo',
+  description: 'Example of using Hexclave as your authentication system.',
 };
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode,
-}) {
+}: LayoutProps<"/">) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
-      <body suppressHydrationWarning>
-        <StackProvider app={stackServerApp}>
+      <body>
+        <StackProvider app={hexclaveServerApp}>
           <StackTheme>
             <Provider>
               <div className="flex flex-col h-screen">
                 <Header />
-                <div className="flex-grow">
+                <div className="flex flex-grow">
                   {children}
                 </div>
               </div>

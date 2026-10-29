@@ -1,0 +1,28 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "1.0.135",
+  "repository": "https://github.com/hexclave/hexclave",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --force --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}20",
+    "build": "tsc -b && vite build",
+    "clean": "rimraf dist && rimraf node_modules",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@hexclave/react": "workspace:*",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-router-dom": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "6.0.3",
+    "vite": "^6.1.0"
+  },
+  "packageManager": "pnpm@11.28.5+sha512.484563d30b4c2ad27cb48aa94ff2b302dbcebc8ff6bf28816c2589886e146ce7f76f354f3bc1a438e6f5e9768c302aa0a6f7add8232903cd4cf81426cbc14d9e"
+}

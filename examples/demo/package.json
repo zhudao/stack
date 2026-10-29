@@ -1,34 +1,37 @@
 {
-  "name": "@stackframe/example-demo-app",
-  "version": "2.5.12",
+  "name": "@hexclave/example-demo-app",
+  "version": "1.0.135",
+  "repository": "https://github.com/hexclave/hexclave",
   "description": "",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
-    "dev": "next dev --port 8103",
+    "dev": "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT=${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}42 node scripts/dev-with-retry.mjs",
+    "dev:inner": "next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}03",
     "build": "next build",
-    "start": "next start --port 8103",
-    "lint": "next lint"
+    "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}03",
+    "lint": "next lint",
+    "analyze": "ANALYZE=true pnpm build"
   },
   "dependencies": {
-    "@emotion/react": "^11.11.3",
-    "@emotion/styled": "^11.11.0",
-    "@stackframe/stack": "workspace:*",
-    "@stackframe/stack-shared": "workspace:*",
-    "@stackframe/stack-ui": "workspace:*",
-    "next": "^14.1",
-    "next-themes": "^0.2.1",
-    "react": "^18.2",
-    "react-dom": "^18",
-    "react-icons": "^5.0.1"
+    "@hexclave/js": "workspace:*",
+    "@hexclave/react": "workspace:*",
+    "@hexclave/next": "workspace:*",
+    "@hexclave/shared": "workspace:*",
+    "@hexclave/ui": "workspace:*",
+    "next": "15.5.19",
+    "next-themes": "^0.4.3",
+    "react": "19.0.1",
+    "react-dom": "19.0.1"
   },
   "devDependencies": {
-    "rimraf": "^5.0.5",
-    "@types/react": "^18.2.66",
-    "@types/react-dom": "^18",
-    "autoprefixer": "^10.4.17",
-    "postcss": "^8.4.35",
-    "tailwindcss": "^3.4.1"
-  }
+    "@types/react": "19.0.12",
+    "@types/react-dom": "19.0.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "rimraf": "^5.0.10",
+    "tailwindcss": "^3.4.14"
+  },
+  "packageManager": "pnpm@11.28.5+sha512.484563d30b4c2ad27cb48aa94ff2b302dbcebc8ff6bf28816c2589886e146ce7f76f354f3bc1a438e6f5e9768c302aa0a6f7add8232903cd4cf81426cbc14d9e"
 }

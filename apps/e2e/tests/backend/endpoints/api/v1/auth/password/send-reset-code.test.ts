@@ -2,7 +2,7 @@ import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should send a password reset code per e-mail", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ sendVerificationEmail: true });
   await Auth.signOut();
   const mailbox = backendContext.value.mailbox;
   const response = await niceBackendFetch("/api/v1/auth/password/send-reset-code", {
@@ -20,21 +20,25 @@ it("should send a password reset code per e-mail", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
-    [
-      MailboxMessage {
-        "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Verify your email at Stack Dashboard",
-        "to": ["<<stripped UUID>@stack-generated.example.com>"],
-        <some fields may have been hidden>,
-      },
-      MailboxMessage {
-        "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Reset your password at Stack Dashboard",
-        "to": ["<<stripped UUID>@stack-generated.example.com>"],
-        <some fields may have been hidden>,
-      },
-    ]
+  // Wait for both verification email (from signup) and reset email
+  await mailbox.waitForMessagesWithSubject("Reset your password");
+  const messages = await mailbox.fetchMessages({ noBody: true });
+  expect(messages.length).toBe(2);
+  expect(messages.find(m => m.subject.includes("Verify your email at Hexclave Dashboard"))).toMatchInlineSnapshot(`
+    MailboxMessage {
+      "from": "Hexclave Dashboard <noreply@example.com>",
+      "subject": "Verify your email at Hexclave Dashboard",
+      "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
+      <some fields may have been hidden>,
+    }
+  `);
+  expect(messages.find(m => m.subject.includes("Reset your password at Hexclave Dashboard"))).toMatchInlineSnapshot(`
+    MailboxMessage {
+      "from": "Hexclave Dashboard <noreply@example.com>",
+      "subject": "Reset your password at Hexclave Dashboard",
+      "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
+      <some fields may have been hidden>,
+    }
   `);
 });
 
@@ -96,7 +100,8 @@ it('should not send a password reset code if the redirect URL is invalid', async
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted.",
+        "details": { "redirect_url": "http://evil-website.example.com" },
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",

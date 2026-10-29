@@ -1,22 +1,25 @@
-import { ProxiedOAuthProviderType, StandardOAuthProviderType } from "@prisma/client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { ProviderType, sharedProviders, standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { TeamSystemPermission, listUserTeamPermissions } from "./permissions";
+import { StandardOAuthProviderType } from "@/generated/prisma/client";
+import { logPermissionDeniedInBackground } from "@/lib/compliance-events";
+import { KnownErrors } from "@hexclave/shared";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { ProviderType, standardProviders } from "@hexclave/shared/dist/utils/oauth";
+import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
+import { listPermissions } from "./permissions";
+import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
 
 async function _getTeamMembership(
   tx: PrismaTransaction,
   options: {
-    projectId: string,
+    tenancyId: string,
     teamId: string, userId: string,
   }
 ) {
   return await tx.teamMember.findUnique({
     where: {
-      projectId_projectUserId_teamId: {
-        projectId: options.projectId,
+      tenancyId_projectUserId_teamId: {
+        tenancyId: options.tenancyId,
         projectUserId: options.userId,
         teamId: options.teamId,
       },
@@ -24,15 +27,15 @@ async function _getTeamMembership(
   });
 }
 
-export async function ensureTeamMembershipExist(
+export async function ensureTeamMembershipExists(
   tx: PrismaTransaction,
   options: {
-    projectId: string,
+    tenancyId: string,
     teamId: string,
     userId: string,
   }
 ) {
-  await ensureUserExist(tx, { projectId: options.projectId, userId: options.userId });
+  await ensureUserExists(tx, { tenancyId: options.tenancyId, userId: options.userId });
 
   const member = await _getTeamMembership(tx, options);
 
@@ -44,7 +47,7 @@ export async function ensureTeamMembershipExist(
 export async function ensureTeamMembershipDoesNotExist(
   tx: PrismaTransaction,
   options: {
-    projectId: string,
+    tenancyId: string,
     teamId: string,
     userId: string,
   }
@@ -56,17 +59,17 @@ export async function ensureTeamMembershipDoesNotExist(
   }
 }
 
-export async function ensureTeamExist(
+export async function ensureTeamExists(
   tx: PrismaTransaction,
   options: {
-    projectId: string,
+    tenancyId: string,
     teamId: string,
   }
 ) {
   const team = await tx.team.findUnique({
     where: {
-      projectId_teamId: {
-        projectId: options.projectId,
+      tenancyId_teamId: {
+        tenancyId: options.tenancyId,
         teamId: options.teamId,
       },
     },
@@ -77,45 +80,123 @@ export async function ensureTeamExist(
   }
 }
 
-export async function ensureUserHasTeamPermission(
+/**
+ * Like `ensureTeamExists`, but also takes a FOR UPDATE row lock on the team for the rest of the transaction.
+ *
+ * Use this as the first lock in transactions that lock a team's dependent rows (members, permissions,
+ * invitations) and then the team itself. The external DB sync sequencer locks the Team row first and then
+ * the team's TEAM_INVITATION verification codes (in one statement), so taking the locks in the opposite
+ * order can deadlock against it.
+ */
+export async function lockTeamForUpdate(
   tx: PrismaTransaction,
   options: {
-    project: ProjectsCrud["Admin"]["Read"],
+    tenancyId: string,
     teamId: string,
-    userId: string,
-    permissionId: TeamSystemPermission,
   }
 ) {
-  await ensureTeamMembershipExist(tx, {
-    projectId: options.project.id,
-    teamId: options.teamId,
-    userId: options.userId,
-  });
+  const rows = await tx.$queryRaw<{ teamId: string }[]>`
+    SELECT "teamId"
+    FROM "Team"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "teamId" = ${options.teamId}::uuid
+    FOR UPDATE
+  `;
 
-  const result = await listUserTeamPermissions(tx, {
-    project: options.project,
-    teamId: options.teamId,
-    userId: options.userId,
-    permissionId: options.permissionId,
-    recursive: true,
-  });
-
-  if (result.length === 0) {
-    throw new KnownErrors.TeamPermissionRequired(options.teamId, options.userId, options.permissionId);
+  if (rows.length === 0) {
+    throw new KnownErrors.TeamNotFound(options.teamId);
   }
 }
 
-export async function ensureUserExist(
+export async function ensureUserTeamPermissionExists(
   tx: PrismaTransaction,
   options: {
-    projectId: string,
+    tenancy: Tenancy,
+    teamId: string,
+    userId: string,
+    permissionId: string,
+    errorType: 'required' | 'not-exist',
+    recursive: boolean,
+  }
+) {
+  await ensureTeamMembershipExists(tx, {
+    tenancyId: options.tenancy.id,
+    teamId: options.teamId,
+    userId: options.userId,
+  });
+
+  const result = await listPermissions(tx, {
+    scope: 'team',
+    tenancy: options.tenancy,
+    teamId: options.teamId,
+    userId: options.userId,
+    permissionId: options.permissionId,
+    recursive: options.recursive,
+  });
+
+  if (result.length === 0) {
+    if (options.errorType === 'not-exist') {
+      throw new KnownErrors.TeamPermissionNotFound(options.teamId, options.userId, options.permissionId);
+    } else {
+      logPermissionDeniedInBackground(options.tenancy, {
+        userId: options.userId,
+        permissionId: options.permissionId,
+        teamId: options.teamId,
+        scope: "team",
+      });
+      throw new KnownErrors.TeamPermissionRequired(options.teamId, options.userId, options.permissionId);
+    }
+  }
+}
+
+export async function ensureProjectPermissionExists(
+  tx: PrismaTransaction,
+  options: {
+    tenancy: Tenancy,
+    userId: string,
+    permissionId: string,
+    errorType: 'required' | 'not-exist',
+    recursive: boolean,
+  }
+) {
+  await ensureUserExists(tx, {
+    tenancyId: options.tenancy.id,
+    userId: options.userId,
+  });
+
+  const result = await listPermissions(tx, {
+    scope: 'project',
+    tenancy: options.tenancy,
+    userId: options.userId,
+    permissionId: options.permissionId,
+    recursive: options.recursive,
+  });
+
+  if (result.length === 0) {
+    if (options.errorType === 'not-exist') {
+      throw new KnownErrors.PermissionNotFound(options.permissionId);
+    } else {
+      logPermissionDeniedInBackground(options.tenancy, {
+        userId: options.userId,
+        permissionId: options.permissionId,
+        scope: "project",
+      });
+      throw new KnownErrors.ProjectPermissionRequired(options.userId, options.permissionId);
+    }
+  }
+}
+
+export async function ensureUserExists(
+  tx: PrismaTransaction,
+  options: {
+    tenancyId: string,
     userId: string,
   }
 ) {
   const user = await tx.projectUser.findUnique({
     where: {
-      projectId_projectUserId: {
-        projectId: options.projectId,
+      tenancyId_projectUserId: {
+        tenancyId: options.tenancyId,
         projectUserId: options.userId,
       },
     },
@@ -126,15 +207,6 @@ export async function ensureUserExist(
   }
 }
 
-export function ensureSharedProvider(
-  providerId: ProviderType
-): Lowercase<ProxiedOAuthProviderType> {
-  if (!sharedProviders.includes(providerId as any)) {
-    throw new KnownErrors.InvalidSharedOAuthProviderId(providerId);
-  }
-  return providerId as any;
-}
-
 export function ensureStandardProvider(
   providerId: ProviderType
 ): Lowercase<StandardOAuthProviderType> {
@@ -142,4 +214,54 @@ export function ensureStandardProvider(
     throw new KnownErrors.InvalidStandardOAuthProviderId(providerId);
   }
   return providerId as any;
+}
+
+export async function ensureContactChannelDoesNotExists(
+  tx: PrismaTransaction,
+  options: {
+    tenancyId: string,
+    userId: string,
+    type: 'email',
+    value: string,
+  }
+) {
+  const contactChannel = await tx.contactChannel.findUnique({
+    where: {
+      tenancyId_projectUserId_type_value: {
+        tenancyId: options.tenancyId,
+        projectUserId: options.userId,
+        type: typedToUppercase(options.type),
+        value: options.value,
+      },
+    },
+  });
+
+  if (contactChannel) {
+    throw new StatusError(StatusError.BadRequest, 'Contact channel already exists');
+  }
+}
+
+export async function ensureContactChannelExists(
+  tx: PrismaTransaction,
+  options: {
+    tenancyId: string,
+    userId: string,
+    contactChannelId: string,
+  }
+) {
+  const contactChannel = await tx.contactChannel.findUnique({
+    where: {
+      tenancyId_projectUserId_id: {
+        tenancyId: options.tenancyId,
+        projectUserId: options.userId,
+        id: options.contactChannelId,
+      },
+    },
+  });
+
+  if (!contactChannel) {
+    throw new StatusError(StatusError.BadRequest, 'Contact channel not found');
+  }
+
+  return contactChannel;
 }

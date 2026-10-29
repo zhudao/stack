@@ -1,6 +1,7 @@
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
-import { InternalProjectKeys, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 describe("without project ID", () => {
   backendContext.set({
@@ -12,7 +13,26 @@ describe("without project ID", () => {
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
-        "body": "Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.\\n\\nAuthentication: None",
+        "body": deindent\`
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+          
+          Authentication: None
+        \`,
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should load with a trailing slash", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1/");
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": deindent\`
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+          
+          Authentication: None
+        \`,
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -25,8 +45,16 @@ describe("without project ID", () => {
         "status": 400,
         "body": {
           "code": "SCHEMA_ERROR",
-          "details": { "message": "Request validation failed on GET /api/v1:\\n  - query contains unknown properties: extra" },
-          "error": "Request validation failed on GET /api/v1:\\n  - query contains unknown properties: extra",
+          "details": {
+            "message": deindent\`
+              Request validation failed on GET /api/v1:
+                - query contains unknown properties: extra
+            \`,
+          },
+          "error": deindent\`
+            Request validation failed on GET /api/v1:
+              - query contains unknown properties: extra
+          \`,
         },
         "headers": Headers {
           "x-stack-known-error": "SCHEMA_ERROR",
@@ -46,7 +74,11 @@ describe("without project ID", () => {
         "body": {
           "code": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
           "details": { "request_type": "client" },
-          "error": "The x-stack-access-type header was 'client', but the x-stack-project-id header was not provided.\\n\\nFor more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/auth#authentication",
+          "error": deindent\`
+            The x-hexclave-access-type header was 'client', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
+            
+            For more information, see the docs on REST API authentication: https://docs.hexclave.com/api/overview#authentication
+          \`,
         },
         "headers": Headers {
           "x-stack-known-error": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
@@ -59,10 +91,70 @@ describe("without project ID", () => {
   it.todo("should not be able to authenticate as user");
 });
 
-describe("with the wrong project keys", async () => {
+describe("with project ID that doesn't exist", async () => {
   backendContext.set({
     projectKeys: {
-      projectId: "project-id",
+      projectId: "invalid",
+      publishableClientKey: "publish-key",
+      secretServerKey: "secret-key",
+      superSecretAdminKey: "admin-key",
+    }
+  });
+
+  it("should not have client access", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "CURRENT_PROJECT_NOT_FOUND",
+          "details": { "project_id": "invalid" },
+          "error": "The current project with ID invalid was not found. Please check the value of the x-hexclave-project-id header. (The legacy x-stack-project-id header is also accepted.)",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+});
+
+describe("with a branch header that doesn't exist", async () => {
+  backendContext.set({
+    projectKeys: {
+      ...InternalProjectKeys,
+    },
+    currentBranchId: "invalid-branch",
+  });
+
+  it("should not have client access", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "BRANCH_DOES_NOT_EXIST",
+          "details": { "branch_id": "invalid-branch" },
+          "error": "The branch with ID invalid-branch does not exist.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "BRANCH_DOES_NOT_EXIST",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+});
+
+describe("with project keys that don't exist", async () => {
+  backendContext.set({
+    projectKeys: {
+      projectId: "internal",
       publishableClientKey: "publish-key",
       secretServerKey: "secret-key",
       superSecretAdminKey: "admin-key",
@@ -78,8 +170,8 @@ describe("with the wrong project keys", async () => {
         "status": 401,
         "body": {
           "code": "INVALID_PUBLISHABLE_CLIENT_KEY",
-          "details": { "project_id": "project-id" },
-          "error": "The publishable key is not valid for the project \\"project-id\\". Does the project and/or the key exist?",
+          "details": { "project_id": "internal" },
+          "error": "The publishable key is not valid for the project \\"internal\\". Does the project and/or the key exist?",
         },
         "headers": Headers {
           "x-stack-known-error": "INVALID_PUBLISHABLE_CLIENT_KEY",
@@ -90,10 +182,215 @@ describe("with the wrong project keys", async () => {
   });
 });
 
-describe("with internal project ID", async () => {
-  backendContext.set({
-    projectKeys: InternalProjectKeys,
+describe("with project keys that don't match the project ID", async () => {
+  const init = async () => {
+    const getProjectKeys = () => {
+      if (backendContext.value.projectKeys === "no-project") {
+        throw new HexclaveAssertionError("No project keys were set.");
+      } else {
+        return backendContext.value.projectKeys;
+      }
+    };
+
+    const originalId = getProjectKeys().projectId;
+    await Project.createAndSwitch();
+    const apiKeysResult = await InternalApiKey.create();
+
+    backendContext.set({
+      projectKeys: {
+        projectId: originalId,
+        publishableClientKey: apiKeysResult.projectKeys.publishableClientKey,
+        secretServerKey: apiKeysResult.projectKeys.secretServerKey,
+        superSecretAdminKey: apiKeysResult.projectKeys.superSecretAdminKey,
+      }
+    });
+  };
+
+  it("should not have client access", async ({ expect }) => {
+    await init();
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 401,
+        "body": {
+          "code": "INVALID_PUBLISHABLE_CLIENT_KEY",
+          "details": { "project_id": "internal" },
+          "error": "The publishable key is not valid for the project \\"internal\\". Does the project and/or the key exist?",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "INVALID_PUBLISHABLE_CLIENT_KEY",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
   });
+});
+
+describe("with optional publishable client key", () => {
+  it("allows client access without a publishable client key when config is unset", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": deindent\`
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+          
+          Authentication: Client
+            Project: <stripped UUID>
+            User: None
+        \`,
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("allows client access without a publishable client key when not required", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": false,
+    });
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": deindent\`
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+          
+          Authentication: Client
+            Project: <stripped UUID>
+            User: None
+        \`,
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("rejects invalid publishable client keys even when not required", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": false,
+    });
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+        publishableClientKey: "invalid-key",
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 401,
+        "body": {
+          "code": "INVALID_PUBLISHABLE_CLIENT_KEY",
+          "details": { "project_id": "<stripped UUID>" },
+          "error": "The publishable key is not valid for the project \\"<stripped UUID>\\". Does the project and/or the key exist?",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "INVALID_PUBLISHABLE_CLIENT_KEY",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+});
+
+describe("with required publishable client key", () => {
+  it("rejects missing publishable client key when required", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": true,
+    });
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 401,
+        "body": {
+          "code": "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+          "details": { "project_id": "<stripped UUID>" },
+          "error": "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+
+  it("allows client access with a valid publishable client key when required", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": true,
+    });
+    const { projectKeys } = await InternalApiKey.create();
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+        publishableClientKey: projectKeys.publishableClientKey,
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": deindent\`
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+          
+          Authentication: Client
+            Project: <stripped UUID>
+            User: None
+        \`,
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+});
+
+describe("with internal project ID", async () => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
 
   it("should not have server access without server API key", async ({ expect }) => {
     const response = await niceBackendFetch("/api/v1", {
@@ -127,7 +424,13 @@ describe("with internal project ID", async () => {
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
           "status": 200,
-          "body": "Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.\\n\\nAuthentication: Client\\n         Project: internal\\n         User: None",
+          "body": deindent\`
+            Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+            
+            Authentication: Client
+              Project: internal
+              User: None
+          \`,
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
@@ -140,7 +443,13 @@ describe("with internal project ID", async () => {
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
           "status": 200,
-          "body": "Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.\\n\\nAuthentication: Server\\n         Project: internal\\n         User: None",
+          "body": deindent\`
+            Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+            
+            Authentication: Server
+              Project: internal
+              User: None
+          \`,
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
@@ -153,7 +462,13 @@ describe("with internal project ID", async () => {
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
           "status": 200,
-          "body": "Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.\\n\\nAuthentication: Admin\\n         Project: internal\\n         User: None",
+          "body": deindent\`
+            Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
+            
+            Authentication: Admin
+              Project: internal
+              User: None
+          \`,
           "headers": Headers { <some fields may have been hidden> },
         }
       `);

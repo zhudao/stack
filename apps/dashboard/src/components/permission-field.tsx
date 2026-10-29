@@ -1,9 +1,9 @@
 import { FieldLabel } from "@/components/form-fields";
-import { Checkbox } from "@/components/ui/checkbox";
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { ServerTeam, AdminTeamPermissionDefinition, ServerUser } from "@stackframe/stack";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { AdminTeamPermissionDefinition, ServerTeam, ServerUser } from "@hexclave/next";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui";
 import { useEffect, useState } from "react";
 import { Control, FieldValues, Path } from "react-hook-form";
 
@@ -128,8 +128,7 @@ export function PermissionListField<F extends FieldValues>(props: {
     selectedPermissionId: string,
   } | {
     type: 'edit-user',
-    user: ServerUser,
-    team: ServerTeam,
+    containedPermissionIds: string[],
   } | {
     type: 'select',
     selectedPermissionIds: string[],
@@ -142,9 +141,7 @@ export function PermissionListField<F extends FieldValues>(props: {
 
       switch (props.type) {
         case 'edit-user': {
-          setGraph((new PermissionGraph(props.permissions)).addPermission(
-            (await props.user.listPermissions(props.team, { direct: true })).map(permission => permission.id)
-          ));
+          setGraph((new PermissionGraph(props.permissions)).addPermission(props.containedPermissionIds));
           break;
         }
         case 'edit': {
@@ -161,9 +158,9 @@ export function PermissionListField<F extends FieldValues>(props: {
         }
       }
     }
-    load().catch(console.error);
+    runAsynchronously(load());
   // @ts-ignore
-  }, [props.permissions, props.selectedPermissionId, props.type, props.user, props.team, props.selectedPermissionIds]);
+  }, [props.permissions, props.selectedPermissionId, props.type, props.user, props.team, props.selectedPermissionIds, props.containedPermissionIds]);
 
   if (!graph || graph.permissions.size <= 1) {
     return null;

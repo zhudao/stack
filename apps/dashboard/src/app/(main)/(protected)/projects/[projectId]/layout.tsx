@@ -1,14 +1,19 @@
+import { UrlPrefetcher } from "@/lib/prefetch/url-prefetcher";
 import { AdminAppProvider } from "./use-admin-app";
-import { OnboardingDialog } from "./onboarding-dialog";
-import SidebarLayout from "./sidebar-layout";
+import ProjectLayoutClient from "./layout-client";
 
-export default function Layout(props: { children: React.ReactNode, params: { projectId: string } }) {
+export default function Layout(
+  props: { children: React.ReactNode, modal?: React.ReactNode }
+) {
   return (
-    <AdminAppProvider projectId={props.params.projectId}>
-      <OnboardingDialog />
-      <SidebarLayout projectId={props.params.projectId}>
+    <AdminAppProvider>
+
+      {/* Pre-fetch the current URL to prevent request waterfalls */}
+      <UrlPrefetcher href="" />
+
+      <ProjectLayoutClient modal={props.modal}>
         {props.children}
-      </SidebarLayout>
+      </ProjectLayoutClient>
     </AdminAppProvider>
   );
 }

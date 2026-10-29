@@ -1,4 +1,4 @@
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { expect } from "vitest";
 import { it, localRedirectUrl, localRedirectUrlRegex } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
@@ -20,20 +20,12 @@ async function getResetCode() {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  const messages = await backendContext.value.mailbox.fetchMessages();
-  const messagesNoBody = await backendContext.value.mailbox.fetchMessages({ noBody: true });
-  expect(messagesNoBody.at(-1)).toMatchInlineSnapshot(`
-    MailboxMessage {
-      "from": "Stack Dashboard <noreply@example.com>",
-      "subject": "Reset your password at Stack Dashboard",
-      "to": ["<<stripped UUID>@stack-generated.example.com>"],
-      <some fields may have been hidden>,
-    }
-  `);
-  const resetCodeMessage = messages.find((m) => m.subject === "Reset your password at Stack Dashboard") ?? throwErr("Reset code message not found");
+  const messages = await mailbox.waitForMessagesWithSubject("Reset your password");
+  const resetCodeMessage = messages.find((m) => m.subject.includes("Reset your password at")) ?? throwErr("Reset code message not found");
+  expect(resetCodeMessage.subject).toBe("Reset your password at Hexclave Dashboard");
   const resetCodeUrls = resetCodeMessage.body?.text.match(localRedirectUrlRegex) ?? throwErr("Reset code regex not matched");
   if (resetCodeUrls.length !== 1) {
-    throw new StackAssertionError(`Expected exactly one reset code link, received ${resetCodeUrls.length}`, { resetCodeMessage });
+    throw new HexclaveAssertionError(`Expected exactly one reset code link, received ${resetCodeUrls.length}`, { resetCodeMessage });
   }
   const resetCodeUrl = new URL(resetCodeUrls[0]);
   return resetCodeUrl.searchParams.get("code") ?? throwErr(`Expected reset code link to contain code query param, received ${resetCodeUrl}`);
@@ -158,13 +150,45 @@ it("should be able to check the password reset code without using it", async ({ 
   });
   expect(checkResponse2).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 409,
       "body": {
         "code": "VERIFICATION_CODE_ALREADY_USED",
         "error": "The verification link has already been used.",
       },
       "headers": Headers {
         "x-stack-known-error": "VERIFICATION_CODE_ALREADY_USED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should return USER_NOT_FOUND if the user was deleted after the reset code was sent", async ({ expect }) => {
+  const { userId } = await Auth.Password.signUpWithEmail();
+  await Auth.signOut();
+  const resetCode = await getResetCode();
+  const deleteResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    method: "DELETE",
+    accessType: "server",
+  });
+  expect(deleteResponse.status).toBe(200);
+  const response = await niceBackendFetch("/api/v1/auth/password/reset", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      code: resetCode,
+      password: "this-is-a-new-password",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "USER_NOT_FOUND",
+        "error": "User not found.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "USER_NOT_FOUND",
         <some fields may have been hidden>,
       },
     }

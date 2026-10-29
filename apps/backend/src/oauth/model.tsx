@@ -1,13 +1,30 @@
+import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
+import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { Prisma } from "@/generated/prisma/client";
+import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { checkApiKeySet } from "@/lib/internal-api-keys";
+import { PendingOAuthAction, applyPendingOAuthAction } from "@/lib/oauth-pending-actions";
+import { getOAuthRedirectUrisForTenancy, isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
+import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { prismaClient } from "@/prisma-client";
-import { decodeAccessToken, generateAccessToken } from "@/lib/tokens";
-import { validateRedirectUrl } from "@/lib/redirect-urls";
-import { checkApiKeySet } from "@/lib/api-keys";
-import { getProject } from "@/lib/projects";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { KnownErrors } from "@stackframe/stack-shared";
+import { KnownErrors } from "@hexclave/shared";
+import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getProjectBranchFromClientId } from ".";
+const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
+
+declare module "@node-oauth/oauth2-server" {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  interface Client {}
+
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  interface User {
+    email?: string | null;
+    oauthProvider?: string;
+    pendingOAuthAction?: PendingOAuthAction;
+  }
+}
 
 const enabledScopes = ["legacy"];
 
@@ -30,29 +47,49 @@ function checkScope(scope: string | string[] | undefined) {
 }
 
 export class OAuthModel implements AuthorizationCodeModel {
+  // Host-derived API URL — threaded into `generateAccessToken` so the access
+  // token's `iss` claim follows the host the customer's SDK targeted (see
+  // `request-api-url.ts`). The OAuthServer that wraps this model is built
+  // per-request in `createOAuthServer()` so each request flows through its own
+  // model instance with its own apiUrl.
+  constructor(private readonly apiUrl: string) {}
+
   async getClient(clientId: string, clientSecret: string): Promise<Client | Falsey> {
+    const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(clientId), true);
+    if (!tenancy) {
+      return false;
+    }
+
+    // If client_secret is provided, validate it
+    // Note: The specific error handling (sentinel vs invalid key) is done in the route handlers
+    // that call this method, as they have more context about the request
     if (clientSecret) {
-      const keySet = await checkApiKeySet(clientId, { publishableClientKey: clientSecret });
-      if (!keySet) {
+      const keySet = await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret });
+      if (keySet.status === "error") {
         return false;
       }
     }
 
-    const project = await getProject(clientId);
-    if (!project) {
-      return false;
+    let redirectUris: string[] = [];
+    try {
+      // This may include wildcard domains and the implicit hosted handler domain;
+      // model.validateRedirectUri(...) performs the authoritative trust check.
+      redirectUris = getOAuthRedirectUrisForTenancy(tenancy);
+    } catch (e) {
+      captureError("get-oauth-redirect-urls", {
+        error: e,
+        projectId: tenancy.project.id,
+        domains: tenancy.config.domains,
+      });
+      throw e;
     }
 
-    const redirectUris = project.config.domains.map(
-      ({ domain, handler_path }) => new URL(handler_path, domain).toString()
-    );
-
-    if (redirectUris.length === 0 && project.config.allow_localhost) {
+    if (redirectUris.length === 0 && tenancy.config.domains.allowLocalhost) {
       redirectUris.push("http://localhost");
     }
 
     return {
-      id: project.id,
+      id: tenancy.project.id,
       grants: ["authorization_code", "refresh_token"],
       redirectUris: redirectUris,
     };
@@ -72,31 +109,107 @@ export class OAuthModel implements AuthorizationCodeModel {
 
   async generateAccessToken(client: Client, user: User, scope: string[]): Promise<string> {
     assertScopeIsValid(scope);
-    return await generateAccessToken({
-      projectId: client.id,
-      userId: user.id,
+    const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
+
+    const refreshTokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
+
+    const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
+      tenancy,
+      refreshTokenObj,
+      apiUrl: this.apiUrl,
     });
+    if (!accessToken) {
+      // Either the refresh token became invalid between _getOrCreateRefreshTokenObj and now
+      // (e.g. a concurrent sign-out deleted the row), or the user was deleted mid-flight.
+      throw new KnownErrors.RefreshTokenNotFoundOrExpired();
+    }
+    return accessToken;
+  }
+
+  async _getOrCreateRefreshTokenObj(client: Client, user: User, scope: string[]) {
+    const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
+
+    // if refresh token already exists and is valid, return it
+    if (user.refreshTokenId) {
+      const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.findUnique({
+        where: {
+          tenancyId_id: {
+            tenancyId: tenancy.id,
+            id: user.refreshTokenId,
+          },
+        },
+      });
+      if (refreshTokenObj && refreshTokenObj.projectUserId !== user.id) {
+        throw new StatusError(401, "Cross-domain handoff refresh token does not belong to the authenticated user.");
+      }
+      if (refreshTokenObj && await isRefreshTokenValid({ tenancy, refreshTokenObj })) {
+        return refreshTokenObj;
+      }
+    }
+
+    // otherwise, create a new refresh token and set its ID on the user
+    const refreshTokenObj = await createRefreshTokenObj({
+      tenancy,
+      projectUserId: user.id,
+    });
+    user.refreshTokenId = refreshTokenObj.id;
+    return refreshTokenObj;
   }
 
   async generateRefreshToken(client: Client, user: User, scope: string[]): Promise<string> {
     assertScopeIsValid(scope);
-    return generateSecureRandomString();
+
+    const tokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
+    return tokenObj.refreshToken;
   }
 
-  async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey>{
+  async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
+    const afterCallbackRedirectUrl = user.afterCallbackRedirectUrl ?? null;
+
     if (token.refreshToken) {
-      await prismaClient.projectUserRefreshToken.create({
-        data: {
+      const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
+      const prisma = await getPrismaClientForTenancy(tenancy);
+      const projectUser = await prisma.projectUser.findUniqueOrThrow({
+        where: {
+          tenancyId_projectUserId: {
+            tenancyId: tenancy.id,
+            projectUserId: user.id,
+          },
+        },
+      });
+      if (projectUser.requiresTotpMfa) {
+        // A link flow returns a User without oauthProvider/email; mirror the callback's
+        // link guard so an MFA re-challenge cannot be recorded as a sign-in success.
+        const isComplianceSignIn = user.oauthProvider != null;
+        throw await createMfaRequiredError({
+          project: tenancy.project,
+          branchId: tenancy.branchId,
+          userId: projectUser.projectUserId,
+          isNewUser: false,
+          ...(isComplianceSignIn ? {
+            method: "oauth" as const,
+            email: user.email ?? undefined,
+            oauthProvider: user.oauthProvider,
+          } : {}),
+        });
+      }
+
+
+      await globalPrismaClient.projectUserRefreshToken.upsert({
+        where: {
+          tenancyId_id: {
+            tenancyId: tenancy.id,
+            id: user.refreshTokenId,
+          },
+        },
+        update: withExternalDbSyncUpdate({
           refreshToken: token.refreshToken,
           expiresAt: token.refreshTokenExpiresAt,
-          projectUser: {
-            connect: {
-              projectId_projectUserId: {
-                projectId: client.id,
-                projectUserId: user.id,
-              },
-            },
-          },
+        }),
+        create: {
+          refreshToken: token.refreshToken,
+          tenancyId: tenancy.id,
+          projectUserId: user.id,
         },
       });
     }
@@ -104,20 +217,29 @@ export class OAuthModel implements AuthorizationCodeModel {
     token.client = client;
     token.user = user;
     return {
-      ...token,
+      accessToken: token.accessToken,
+      accessTokenExpiresAt: token.accessTokenExpiresAt,
+      refreshToken: token.refreshToken,
+      refreshTokenExpiresAt: token.refreshTokenExpiresAt,
+      scope: token.scope,
+      client: token.client,
+      user: token.user,
+
+      // TODO remove deprecated camelCase properties
       newUser: user.newUser,
-      afterCallbackRedirectUrl: user.afterCallbackRedirectUrl,
+      is_new_user: user.newUser,
+      afterCallbackRedirectUrl: afterCallbackRedirectUrl,
+      after_callback_redirect_url: afterCallbackRedirectUrl,
     };
   }
 
   async getAccessToken(accessToken: string): Promise<Token | Falsey> {
-    let decoded;
-    try {
-      decoded = await decodeAccessToken(accessToken);
-    } catch (e) {
-      captureError("getAccessToken", e);
+    const result = await decodeAccessToken(accessToken, { allowAnonymous: true, allowRestricted: true });
+    if (result.status === "error") {
+      captureError("getAccessToken", result.error);
       return false;
     }
+    const decoded = result.data;
 
     return {
       accessToken,
@@ -134,7 +256,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getRefreshToken(refreshToken: string): Promise<RefreshToken | Falsey> {
-    const token = await prismaClient.projectUserRefreshToken.findUnique({
+    const token = await globalPrismaClient.projectUserRefreshToken.findUnique({
       where: {
         refreshToken,
       },
@@ -144,14 +266,26 @@ export class OAuthModel implements AuthorizationCodeModel {
       return false;
     }
 
+    const tenancy = await getTenancy(token.tenancyId);
+
+    if (!tenancy) {
+      // this may trigger when the tenancy was deleted after the token was created
+      return false;
+    }
+
+    if (!(await isRefreshTokenValid({ tenancy, refreshTokenObj: token }))) {
+      return false;
+    }
+
     return {
       refreshToken,
       refreshTokenExpiresAt: token.expiresAt === null ? undefined : token.expiresAt,
       user: {
         id: token.projectUserId,
+        refreshTokenId: token.id,
       },
       client: {
-        id: token.projectId,
+        id: tenancy.project.id,
         grants: ["authorization_code", "refresh_token"],
       },
       scope: enabledScopes,
@@ -176,17 +310,29 @@ export class OAuthModel implements AuthorizationCodeModel {
       throw new KnownErrors.InvalidScope("<empty string>");
     }
     assertScopeIsValid(code.scope);
-    await prismaClient.projectUserAuthorizationCode.create({
+    const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
+
+    if (!validateRedirectUrl(code.redirectUri, tenancy) && !isAcceptedNativeAppUrl(code.redirectUri)) {
+      throw new KnownErrors.RedirectUrlNotWhitelisted(code.redirectUri);
+    }
+
+    if (!code.codeChallenge || code.codeChallengeMethod !== "S256") {
+      throw new HexclaveAssertionError("Refusing to persist an OAuth authorization code without a valid S256 PKCE challenge; this should have been rejected at the authorize endpoint.", { hasChallenge: !!code.codeChallenge, codeChallengeMethod: code.codeChallengeMethod });
+    }
+
+    await globalPrismaClient.projectUserAuthorizationCode.create({
       data: {
         authorizationCode: code.authorizationCode,
-        codeChallenge: code.codeChallenge || "",
-        codeChallengeMethod: code.codeChallengeMethod || "",
+        codeChallenge: code.codeChallenge,
+        codeChallengeMethod: code.codeChallengeMethod,
         redirectUri: code.redirectUri,
         expiresAt: code.expiresAt,
         projectUserId: user.id,
         newUser: user.newUser,
         afterCallbackRedirectUrl: user.afterCallbackRedirectUrl,
-        projectId: client.id,
+        grantedRefreshTokenId: user.refreshTokenId,
+        pendingOAuthAction: user.pendingOAuthAction,
+        tenancyId: tenancy.id,
       },
     });
 
@@ -204,14 +350,37 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async getAuthorizationCode(authorizationCode: string): Promise<AuthorizationCode | Falsey> {
-    const code = await prismaClient.projectUserAuthorizationCode.findUnique({
+    const code = await globalPrismaClient.projectUserAuthorizationCode.findUnique({
       where: {
         authorizationCode,
       },
     });
+
     if (!code) {
       return false;
     }
+
+    const tenancy = await getTenancy(code.tenancyId);
+
+    if (!tenancy) {
+      // this may trigger when the tenancy was deleted after the code was created
+      return false;
+    }
+
+    try {
+      await usersCrudHandlers.adminRead({
+        tenancy,
+        user_id: code.projectUserId,
+        allowedErrorTypes: [KnownErrors.UserNotFound],
+      });
+    } catch (error) {
+      if (error instanceof KnownErrors.UserNotFound) {
+        // this may trigger when the user was deleted after the code was created
+        return false;
+      }
+      throw error;
+    }
+
     return {
       authorizationCode: code.authorizationCode,
       expiresAt: code.expiresAt,
@@ -220,46 +389,59 @@ export class OAuthModel implements AuthorizationCodeModel {
       codeChallenge: code.codeChallenge,
       codeChallengeMethod: code.codeChallengeMethod,
       client: {
-        id: code.projectId,
+        // TODO once we support branches, the branch ID should be included here
+        id: tenancy.project.id,
         grants: ["authorization_code", "refresh_token"],
       },
       user: {
         id: code.projectUserId,
         newUser: code.newUser,
-        afterCallbackRedirectUrl: code.afterCallbackRedirectUrl,
+        afterCallbackRedirectUrl: code.afterCallbackRedirectUrl ?? undefined,
+        refreshTokenId: code.grantedRefreshTokenId ?? undefined,
       },
     };
   }
 
   async revokeAuthorizationCode(code: AuthorizationCode): Promise<boolean> {
+    let deletedCode;
     try {
-      const deletedCode = await prismaClient.projectUserAuthorizationCode.delete({
+      deletedCode = await globalPrismaClient.projectUserAuthorizationCode.delete({
         where: {
           authorizationCode: code.authorizationCode,
-        }
+        },
       });
-
-      return !!deletedCode;
-    } catch (e) {
-      if (!(e instanceof PrismaClientKnownRequestError)) {
-        throw e;
+    } catch (error) {
+      if (!(error instanceof PrismaClientKnownRequestError)) {
+        throw error;
       }
       return false;
     }
+
+    // The OAuth library calls this right after verifying the PKCE code_verifier and before minting any tokens,
+    // which makes it the earliest point where we know the redeemer is the party that started the flow. The
+    // delete above is the atomic single-use claim, so the action runs at most once. It also has to run before
+    // tokens are minted, as the access token's claims (e.g. is_anonymous) must reflect the applied action.
+    if (deletedCode.pendingOAuthAction != null) {
+      const tenancy = await getTenancy(deletedCode.tenancyId)
+        ?? throwErr("Tenancy of authorization code not found, but getAuthorizationCode just checked that it exists", { tenancyId: deletedCode.tenancyId });
+      await applyPendingOAuthAction({
+        tenancy,
+        projectUserId: deletedCode.projectUserId,
+        rawAction: deletedCode.pendingOAuthAction,
+      });
+    }
+
+    return true;
   }
 
   async validateRedirectUri(redirect_uri: string, client: Client): Promise<boolean> {
-    const project = await getProject(client.id);
-
-    if (!project) {
-      // This should in theory never happen, make typescript happy
-      throw new StackAssertionError("Project not found");
+    // Accept native app OAuth URLs without trusted domain configuration
+    if (isAcceptedNativeAppUrl(redirect_uri)) {
+      return true;
     }
 
-    return validateRedirectUrl(
-      redirect_uri,
-      project.config.domains,
-      project.config.allow_localhost,
-    );
+    const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
+
+    return validateRedirectUrl(redirect_uri, tenancy);
   }
 }

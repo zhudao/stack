@@ -1,7 +1,5 @@
-import { TokenSet } from "openid-client";
-import { OAuthBaseProvider } from "./base";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { OAuthBaseProvider, TokenSet } from "./base";
 
 export class GoogleProvider extends OAuthBaseProvider {
   private constructor(
@@ -13,27 +11,43 @@ export class GoogleProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
+    redirectUri: string,
   }) {
+    const { redirectUri, ...rest } = options;
     return new GoogleProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://accounts.google.com",
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenEndpoint: "https://oauth2.googleapis.com/token",
       userinfoEndpoint: "https://openidconnect.googleapis.com/v1/userinfo",
-      redirectUri: getEnvVariable("STACK_BASE_URL") + "/api/v1/auth/oauth/callback/google",
+      redirectUri,
+      openid: true,
+      jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
       baseScope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
-      ...options,
+      authorizationExtraParams: {
+        prompt: "consent",
+        include_granted_scopes: "true",
+      },
+      ...rest,
     }));
   }
 
   async postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo> {
-    const rawUserInfo = await this.oauthClient.userinfo(tokenSet);
+    const rawUserInfo = await this.oauthClient.userinfo(tokenSet.accessToken);
     return validateUserInfo({
       accountId: rawUserInfo.sub,
       displayName: rawUserInfo.name,
       email: rawUserInfo.email,
       profileImageUrl: rawUserInfo.picture,
-      accessToken: tokenSet.access_token,
-      refreshToken: tokenSet.refresh_token,
+      emailVerified: rawUserInfo.email_verified,
     });
+  }
+
+  async checkAccessTokenValidity(accessToken: string): Promise<boolean> {
+    const res = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok;
   }
 }

@@ -1,19 +1,23 @@
 "use client";
 
-import * as yup from "yup";
-import { Form } from "./ui/form";
 import { yupResolver } from "@hookform/resolvers/yup";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { Form } from "@/components/ui";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import React, { useCallback, useMemo, useState } from "react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { DateField, InputField } from "./form-fields";
+import * as yup from "yup";
+import { CheckboxField, DateField, InputField, NumberField, TextAreaField } from "./form-fields";
 
 // Used for yup TS support
 declare module 'yup' {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   export interface CustomSchemaMetadata {
     stackFormFieldRender?: (props: { control: ReturnType<typeof useForm>['control'], name: string, label: string, disabled: boolean }) => React.ReactNode,
     stackFormFieldPlaceholder?: string,
+    stackFormFieldExtraProps?: Record<string, unknown>,
+    type?: "text" | "textarea",
+    description?: string,
   }
 }
 
@@ -22,10 +26,13 @@ export function SmartForm<S extends yup.ObjectSchema<any>>(props: {
   onSubmit: (values: yup.InferType<S>) => Promise<void>,
   formId?: string,
   onChangeIsSubmitting?: (isSubmitting: boolean) => void,
+  defaultValues?: Partial<yup.InferType<S>>,
+  isOpen?: boolean,
 }) {
+  const resolvedDefaultValues = props.defaultValues ?? props.formSchema.getDefault();
   const form = useForm({
     resolver: yupResolver(props.formSchema),
-    defaultValues: props.formSchema.getDefault(),
+    defaultValues: resolvedDefaultValues,
     mode: "onChange",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,16 +43,25 @@ export function SmartForm<S extends yup.ObjectSchema<any>>(props: {
       await form.handleSubmit(async (values: yup.InferType<S>, e?: React.BaseSyntheticEvent) => {
         e!.preventDefault();
         await props.onSubmit(values);
-        form.reset();
+        form.reset(resolvedDefaultValues);
       })(e);
     } finally {
       props.onChangeIsSubmitting?.(false);
       setIsSubmitting(false);
     }
-  }, [props, form]);
+  }, [props, form, resolvedDefaultValues]);
+
+  const prevOpen = useRef(props.isOpen ?? false);
+  useEffect(() => {
+    const currentOpen = props.isOpen ?? false;
+    if (currentOpen && !prevOpen.current) {
+      form.reset(resolvedDefaultValues);
+    }
+    prevOpen.current = currentOpen;
+  }, [props.isOpen, resolvedDefaultValues, form]);
 
   const details = props.formSchema.describe();
-  const defaults = props.formSchema.getDefault();
+  const defaults = resolvedDefaultValues;
 
   return (
     <Form {...form}>
@@ -75,6 +91,8 @@ function SmartFormField(props: {
     placeholder: "meta" in props.description && props.description.meta?.stackFormFieldPlaceholder !== undefined ? props.description.meta.stackFormFieldPlaceholder :
       typeof props.defaultValue === "string" ? `Eg.: ${props.defaultValue}` : undefined,
     defaultValue: props.defaultValue,
+    description: "meta" in props.description ? props.description.meta?.description : undefined,
+    ..."meta" in props.description ? props.description.meta?.stackFormFieldExtraProps ?? {} : {},
   };
 
   if ("meta" in props.description) {
@@ -90,17 +108,27 @@ function SmartFormField(props: {
     return null;
   }
   if (!("oneOf" in props.description)) {
-    throw new StackAssertionError(`Unsupported yup field ${props.id}; can't create form automatically from lazy yup schema`);
+    throw new HexclaveAssertionError(`Unsupported yup field ${props.id}; can't create form automatically from lazy yup schema`);
   }
 
   switch (props.description.type) {
     case 'string': {
-      return <InputField {...usualProps} />;
+      if (props.description.meta?.type === "textarea") {
+        return <TextAreaField {...usualProps} />;
+      } else {
+        return <InputField {...usualProps} />;
+      }
     }
     case 'date': {
       return <DateField {...usualProps} />;
     }
+    case 'boolean': {
+      return <CheckboxField {...usualProps} />;
+    }
+    case 'number': {
+      return <NumberField {...usualProps} />;
+    }
   }
 
-  throw new StackAssertionError(`Unsupported yup field ${props.id}; can't create form automatically from schema of type ${JSON.stringify(props.description.type)}. Maybe you need to implement it, or add a stackFormFieldRender meta property to the schema.`);
+  throw new HexclaveAssertionError(`Unsupported yup field ${props.id}; can't create form automatically from schema of type ${JSON.stringify(props.description.type)}. Maybe you need to implement it, or add a stackFormFieldRender meta property to the schema.`);
 }

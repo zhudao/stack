@@ -1,117 +1,190 @@
-![Stack Logo](/.github/assets/logo.png)
-
-<h3 align="center">
-  <a href="https://docs.stack-auth.com">📘 Docs</a>
-  | <a href="https://stack-auth.com/">☁️ Hosted Version</a>
-  | <a href="https://demo.stack-auth.com/">✨ Demo</a>
-  | <a href="https://discord.stack-auth.com">🎮 Discord</a>
-</h4>
-
-# Stack Auth: Open-source Clerk/Auth0 alternative
-
-Stack Auth is a managed user authentication solution. It is developer-friendly and fully open-source (licensed under MIT and AGPL).
-
-Stack gets you started in just five minutes, after which you'll be ready to use all of its features as you grow your project. Our managed service is completely optional and you can export your user data and self-host, for free, at any time.
-
-We support Next.js frontends, along with any backend that can use our [REST API](https://docs.stack-auth.com/rest-api/auth). Check out our [setup guide](https://docs.stack-auth.com/getting-started/setup) to get started.
-
+# Hexclave
 <div align="center">
-<img alt="Stack Setup" src=".github/assets/create-project.gif" height="328" width="400" />
+
+<img src=".github/assets/hexclave-header.svg" alt="Hexclave" width="320"/>
+
+<br/>
+
+**The user infrastructure platform.**
+
+Hexclave handles everything around your users: authentication, teams,
+payments, emails, analytics, and much more. Get started with our AI
+prompt below.
+
+[Website](https://hexclave.com) · [Docs](https://docs.hexclave.com) · [Dashboard](https://app.hexclave.com) · [Discord](https://discord.hexclave.com)
+
+![License](https://img.shields.io/badge/license-MIT%20%2F%20AGPLv3-blue)
+![SDKs](https://img.shields.io/badge/SDKs-Next.js%20%C2%B7%20React%20%C2%B7%20JS-black)
+![Deploy](https://img.shields.io/badge/deploy-Cloud%20or%20self--hosted-success)
+
 </div>
 
-## ✨ Features
+---
 
-| | |
-|-|:-:|
-| <h3>`<SignIn/>` and `<SignUp/>`</h3> Authentication components that support OAuth, password credentials, and magic links, with shared development keys to make setup faster. All components support dark/light modes. | <img alt="Sign-in component" src=".github/assets/dark-light-mode.png" height="280"> |
-| <h3>Idiomatic Next.js APIs</h3> We build on server components, React hooks, and route handlers. | ![Dark/light mode](.github/assets/components.png) |
-| <h3>User dashboard</h3> Dashboard to filter, analyze, and edit users. Replaces the first internal tool you would have to build. | ![User dashboard](.github/assets/dashboard.png) |
-| <h3>Account settings</h3> Lets users update their profile, verify their e-mail, or change their password. No setup required. | <img alt="Account settings component" src=".github/assets/account-settings.png" height="280"> |
-| <h3>Multi-tenancy & teams</h3> Manage B2B customers with an organization structure that makes sense and scales to millions. | <img alt="Selected team switcher component" src=".github/assets/team-switcher.png" height="280"> |
-| <h3>Role-based access control</h3> Define an arbitrary permission graph and assign it to users. Organizations can create org-specific roles. | <img alt="RBAC" src=".github/assets/permissions.png" height="280"> |
-| <h3>OAuth Connections</h3>Beyond login, Stack can also manage access tokens for third-party APIs, such as Outlook and Google Calendar. It handles refreshing tokens and controlling scope, making access tokens accessible via a single function call. | <img alt="OAuth tokens" src=".github/assets/connected-accounts.png" height="280"> |
-| <h3>Impersonation</h3> Impersonate users for debugging and support, logging into their account as if you were them. | <img alt="Webhooks" src=".github/assets/impersonate.png" height="280"> |
-| <h3>Webhooks</h3> Get notified when users use your product, built on Svix. | <img alt="Webhooks" src=".github/assets/stack-webhooks.png" height="280"> |
-| <h3>Automatic emails</h3> Send customizable emails on triggers such as sign-up, password reset, and email verification, editable with a WYSIWYG editor. | <img alt="Email templates" src=".github/assets/email-editor.png" height="280"> |
-| <h3>User session & JWT handling</h3> Stack manages refresh and access tokens, JWTs, and cookies, resulting in the best performance at no implementation cost. | <img alt="User button" src=".github/assets/user-button.png" height="280"> |
-| <h3>M2M authentication</h3> Use short-lived access tokens to authenticate your machines to other machines. | <img src=".github/assets/m2m-auth.png" alt="M2M authentication" height="250"> |
+<div align="center">
+  <img src=".github/assets/comparison.webp" alt="Where Hexclave fits in the infrastructure stack" width="900"/>
+</div>
 
+## Get started
 
-## 📦 Installation & Setup
+Setting up Hexclave is one prompt. Paste this into your coding agent of choice:
 
-Refer to [our documentation](https://docs.stack-auth.com/getting-started/setup) on how to set up Stack Auth in your Next.js project.
-
-## 🌱 Some community projects built with Stack
-
-- [Next SaaSkit by wolfgunblood](https://github.com/wolfgunblood/nextjs-saaskit)
-- [Stack Example by career-tokens](https://github.com/career-tokens/StackYCAuth)
-
-## 🏗️ Development & Contribution
-
-This is for you if you want to contribute to the Stack project or run the Stack dashboard locally.
-
-**Important**: Please read the [contribution guidelines](CONTRIBUTING.md) carefully and join [our Discord](https://discord.stack-auth.com) if you'd like to help.
-
-### Requirements
-
-- Node v20
-- pnpm v9
-- Docker
-
-### Setup
-
-Pre-populated .env files for the setup below are available and used by default in `.env.development` in each of the packages. You should copy all the `.env.development` files to `.env.local` in the respective packages for local development.
-
-In a terminal, start the dependencies (Postgres and Inbucket) as Docker containers:
-
-```sh
-docker compose -f dependencies.compose.yaml up
+```text
+Read skill.hexclave.com and help me setup hexclave in this project
 ```
 
-Then open a new terminal:
+## For AI agents
 
-```sh
-pnpm install
+If you're an AI coding agent, use your web fetch tool or curl the skill documentation for up-to-date integration instructions:
 
-# Run build to build everything once
-pnpm run build
-
-# initialize the database and seed it with some data
-pnpm prisma db push
-pnpm prisma db seed
-
-# Run code generation (repeat this after eg. changing the Prisma schema). This is part of the build script, but faster
-pnpm run codegen
-
-# Start the dev server
-pnpm run dev
-
-# In a different terminal, run tests in watch mode
-pnpm run test
+```
+curl -sSL "https://skill.hexclave.com?question=<your-question>&context=<your-context>"
 ```
 
-You can now open the dashboard at [http://localhost:8101](http://localhost:8101), API on port 8102, demo on port 8103, docs on port 8104, Inbucket (e-mails) on port 8105, and Prisma Studio on port 8106.
+## What's included
 
-Your IDE may show an error on all `@stackframe/XYZ` imports. To fix this, simply restart the TypeScript language server; for example, in VSCode you can open the command palette (Ctrl+Shift+P) and run `Developer: Reload Window` or `TypeScript: Restart TS server`.
+Hexclave ships as a catalog of apps you switch on as your product needs them.
+Each one is built on the same user model, and new apps land regularly.
 
-You can also open Prisma Studio to see the database interface and edit data directly:
+<table><tr>
+<td width="50%" valign="middle">
 
-```sh
-pnpm run prisma studio
-```
+### <img src=".github/assets/logos/authentication.webp" alt="" width="40" align="top"/> &nbsp; Authentication
 
-### Database migrations
+Authentication that just works with passkeys, OAuth, and CLI auth. Drop in one component and ship the whole flow; auth methods toggle from the dashboard with no code changes needed.
 
-If you make changes to the Prisma schema, you need to run the following command to create a migration:
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/authentication.webp" width="520" alt="Authentication"/>
+</td>
+</tr></table>
 
-```sh
-pnpm run prisma migrate dev
-```
+<table><tr>
+<td width="50%" valign="middle">
 
-## Contributors
+### <img src=".github/assets/logos/teams.webp" alt="" width="40" align="top"/> &nbsp; Teams
 
-Thanks to the amazing community who built Stack:
+Build for teams, not just users, with workspaces, email invites, and roles that actually gate the work. The workspace switcher remembers selection, invites auto sign up new users, and permissions hold up under audit.
 
-<a href="https://github.com/stack-auth/stack/graphs/contributors">
-  <img src="https://api.dev.stack-auth.com/api/v1/contributors" />
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/teams.webp" width="520" alt="Teams"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/rbac.webp" alt="" width="40" align="top"/> &nbsp; RBAC
+
+Permissions, sorted: roles that nest and one permission check that works the same on server or client. Define them in the dashboard, check them anywhere in your code.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/rbac.webp" width="520" alt="RBAC"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/api-keys.webp" alt="" width="40" align="top"/> &nbsp; API Keys
+
+API keys without the footguns: leaked keys get auto-revoked, work for users and teams, and show the full secret only once. We never keep the plaintext after creation.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/api-keys.webp" width="520" alt="API Keys"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/payments.webp" alt="" width="40" align="top"/> &nbsp; Payments
+
+Payments without the plumbing for subscriptions, one-time charges, and usage metering with credits. Bill a person or a whole team with one model, no separate codepath.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/payments.webp" width="520" alt="Payments"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/emails.webp" alt="" width="40" align="top"/> &nbsp; Emails
+
+Email that delivers and tells you so, handling transactional and marketing sends from one API. Edit templates with an AI editor, theme once, and track every open and click.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/emails.webp" width="520" alt="Emails"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/analytics.webp" alt="" width="40" align="top"/> &nbsp; Analytics
+
+Know your users with no data stack required, with live active user counts and session replays out of the box. Ask in plain English to build dashboards or write SQL to save queries, all with one flag enabled.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/analytics.webp" width="520" alt="Analytics"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/webhooks.webp" alt="" width="40" align="top"/> &nbsp; Webhooks
+
+React to every user event in real time with signed, tamper-proof webhooks. Retries and backoff are handled for you; verify in five lines and manage endpoints from the dashboard.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/webhooks.webp" width="520" alt="Webhooks"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/data-vault.webp" alt="" width="40" align="top"/> &nbsp; Data Vault
+
+A safe for the secrets your users hand you, locked with your secret so we never see the plaintext. Store and retrieve tokens in two lines each, server-only by design.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/data-vault.webp" width="520" alt="Data Vault"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/launch-checklist.webp" alt="" width="40" align="top"/> &nbsp; Launch Checklist
+
+Run through the must-do checks before flipping to production: domain setup, callbacks locked, secrets rotated. The progress tracker keeps your team aligned so nothing critical slips through on launch day.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/launch-checklist.webp" width="520" alt="Launch Checklist"/>
+</td>
+</tr></table>
+
+## Contributing
+
+Hexclave is open source, and contributions are welcome. Read
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) to get started, and say hello in
+[Discord](https://discord.hexclave.com) before picking up anything large.
+Found a security issue? Email security@hexclave.com.
+
+## ❤ Contributors
+
+<a href="https://github.com/hexclave/hexclave/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=hexclave/hexclave&columns=9" alt="Contributors" width="100%" />
 </a>

@@ -1,8 +1,9 @@
-import { cn } from "@/lib/utils";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import React from "react";
+import { cn } from "@/lib/utils";
 
-export const typographyVariants = cva("text-md", {
+const typographyVariants = cva("stack-scope text-md", {
   variants: {
     type: {
       h1: "text-3xl font-bold",
@@ -12,6 +13,7 @@ export const typographyVariants = cva("text-md", {
       p: "text-md",
       label: "text-sm",
       footnote: "text-xs",
+      div: "text-md",
     },
     variant: {
       primary: "text-black dark:text-white",
@@ -26,11 +28,9 @@ export const typographyVariants = cva("text-md", {
   },
 });
 
-export interface TypographyProps
-  extends React.HTMLAttributes<HTMLHeadingElement>,
-    VariantProps<typeof typographyVariants> {}
+type TypographyProps = {} & React.HTMLAttributes<HTMLHeadingElement> & VariantProps<typeof typographyVariants>
 
-const Typography = React.forwardRef<HTMLHeadingElement, TypographyProps>(
+const Typography = forwardRefIfNeeded<HTMLHeadingElement, TypographyProps>(
   ({ className, type, variant, ...props }, ref) => {
     const Comp = (type === 'footnote' || type === 'label' ? 'p' : type) || 'p';
     return (
@@ -44,4 +44,5 @@ const Typography = React.forwardRef<HTMLHeadingElement, TypographyProps>(
 );
 Typography.displayName = "Typography";
 
-export default Typography;
+export { Typography };
+

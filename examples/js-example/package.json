@@ -1,0 +1,22 @@
+{
+  "name": "@hexclave/js-example",
+  "version": "1.0.135",
+  "repository": "https://github.com/hexclave/hexclave",
+  "private": true,
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "dotenv -e .env.development -e .env.local -- vite --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}19 --force",
+    "clean": "rimraf dist && rimraf node_modules"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@hexclave/js": "workspace:*",
+    "dotenv-cli": "^7.4.1",
+    "typescript": "6.0.3",
+    "vite": "^6.1.0"
+  },
+  "packageManager": "pnpm@11.28.5+sha512.484563d30b4c2ad27cb48aa94ff2b302dbcebc8ff6bf28816c2589886e146ce7f76f354f3bc1a438e6f5e9768c302aa0a6f7add8232903cd4cf81426cbc14d9e"
+}

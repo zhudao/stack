@@ -1,12 +1,33 @@
 *.untracked
 *.untracked.*
+node-compile-cache/
+.envrc
 
+*.heapsnapshot
+
+debug.log
+turbo.log
+
+*.cpuprofile
+
+
+.pnpm-store
+
+
+.vercel
+.output
+.nitro
+
+# https://stackoverflow.com/questions/76510164/can-i-safely-delete-vite-config-ts-timestamp-files
+vite.config.ts.timestamp-*
 
 # Misc
 .DS_Store
 .eslintcache
 .env.local
 .env.*.local
+docker/local-emulator/.env.development
+scratch/
 
 npm-debug.log*
 yarn-debug.log*
@@ -16,8 +37,10 @@ ui-debug.log
 .pnpm-debug.log
 .husky
 tmp
+tsx-0
 
 vitest.config.ts.timestamp-*
+tsdown.config.bundled_*
 
 # Dependencies
 node_modules
@@ -31,6 +54,7 @@ dist
 .docusaurus
 .cache-loader
 **.tsbuildinfo
+implementation.generated.ts
 
 .xata*
 
@@ -69,18 +93,13 @@ playwright/.cache
 # Turborepo
 .turbo
 
-# docusaurus
-docs/.docusaurus
-docs/manifest.mjs
 
 # Core
 packages/core/src/providers/oauth-types.ts
 packages/core/lib
 packages/core/providers
-docs/docs/reference/core
 
 # Next.js
-docs/docs/reference/nextjs
 next-env.d.ts
 
 # SvelteKit
@@ -90,18 +109,6 @@ packages/frameworks-sveltekit/.svelte-kit
 packages/frameworks-sveltekit/package
 packages/frameworks-sveltekit/vite.config.js.timestamp-*
 packages/frameworks-sveltekit/vite.config.ts.timestamp-*
-docs/docs/reference/sveltekit
-
-# SolidStart
-docs/docs/reference/solidstart
-
-
-# Express
-docs/docs/reference/express
-
-
-# Adapters
-docs/docs/reference/adapter
 
 ## Drizzle migration folder
 .drizzle
@@ -109,6 +116,19 @@ docs/docs/reference/adapter
 # Sentry Config File
 .sentryclirc
 
-# python
+# Python
 __pycache__/
 .venv/
+
+# Generated packages
+packages/js/*
+packages/react/*
+packages/next/*
+packages/tanstack-start/*
+!packages/js/package.json
+!packages/react/package.json
+!packages/next/package.json
+!packages/tanstack-start/package.json
+
+# claude code
+.claude/scheduled_tasks.lock

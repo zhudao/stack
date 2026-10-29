@@ -1,7 +1,7 @@
 import { it } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
-it("should allow updating existing passwords", async ({ expect }) => {
+it("should update existing passwords", async ({ expect }) => {
   const signUpRes = await Auth.Password.signUpWithEmail();
   const oldPassword = signUpRes.password;
   const newPassword = "new-password";
@@ -25,7 +25,45 @@ it("should allow updating existing passwords", async ({ expect }) => {
   await Auth.expectToBeSignedIn();
 });
 
-it("should not allow updating passwords to weak passwords", async ({ expect }) => {
+it("should sign out other sessions but not own session when updating password", async ({ expect }) => {
+  const signUpRes = await Auth.Password.signUpWithEmail();
+  const oldPassword = signUpRes.password;
+  const newPassword = "new-password";
+
+  const otherSessionAuth = {
+    ...backendContext.value.userAuth,
+    accessToken: undefined,
+  };
+  backendContext.set({ userAuth: otherSessionAuth });
+  await Auth.expectSessionToBeValid();
+  backendContext.set({ userAuth: null });
+
+  await Auth.Password.signInWithEmail({ password: oldPassword });
+  await Auth.expectToBeSignedIn();
+
+  const response = await niceBackendFetch("/api/v1/auth/password/update", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      old_password: oldPassword,
+      new_password: newPassword,
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  await Auth.expectSessionToBeValid();
+  await Auth.expectToBeSignedIn();  // shouldn't sign out own session
+
+  backendContext.set({ userAuth: otherSessionAuth });
+  await Auth.expectSessionToBeInvalid();
+});
+
+it("should not update passwords to weak passwords", async ({ expect }) => {
   const signUpRes = await Auth.Password.signUpWithEmail();
   const oldPassword = signUpRes.password;
   const newPassword = "short";
@@ -53,7 +91,7 @@ it("should not allow updating passwords to weak passwords", async ({ expect }) =
   `);
 });
 
-it("should not allow updating passwords without old password", async ({ expect }) => {
+it("should not update passwords without old password", async ({ expect }) => {
   await Auth.Password.signUpWithEmail();
   const newPassword = "new-password";
   const response = await niceBackendFetch("/api/v1/auth/password/update", {
@@ -68,8 +106,16 @@ it("should not allow updating passwords without old password", async ({ expect }
       "status": 400,
       "body": {
         "code": "SCHEMA_ERROR",
-        "details": { "message": "Request validation failed on POST /api/v1/auth/password/update:\\n  - body.old_password is a required field" },
-        "error": "Request validation failed on POST /api/v1/auth/password/update:\\n  - body.old_password is a required field",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/v1/auth/password/update:
+              - body.old_password must be defined
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/v1/auth/password/update:
+            - body.old_password must be defined
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "SCHEMA_ERROR",
@@ -79,7 +125,7 @@ it("should not allow updating passwords without old password", async ({ expect }
   `);
 });
 
-it("should not allow updating passwords if the provided old password is wrong", async ({ expect }) => {
+it("should not update passwords if the provided old password is wrong", async ({ expect }) => {
   await Auth.Password.signUpWithEmail();
   const newPassword = "new-password";
   const response = await niceBackendFetch("/api/v1/auth/password/update", {
@@ -105,7 +151,7 @@ it("should not allow updating passwords if the provided old password is wrong", 
   `);
 });
 
-it("should not allow updating passwords if the user does not have password authentication enabled", async ({ expect }) => {
+it("should not update passwords if the user does not have password authentication enabled", async ({ expect }) => {
   await Auth.Otp.signIn();
   const newPassword = "new-password";
   const response = await niceBackendFetch("/api/v1/auth/password/update", {
@@ -131,7 +177,7 @@ it("should not allow updating passwords if the user does not have password authe
   `);
 });
 
-it("should not allow updating password when not logged in", async ({ expect }) => {
+it("should not update password when not logged in", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/password/update", {
     method: "POST",
     accessType: "client",
@@ -145,8 +191,16 @@ it("should not allow updating password when not logged in", async ({ expect }) =
       "status": 400,
       "body": {
         "code": "SCHEMA_ERROR",
-        "details": { "message": "Request validation failed on POST /api/v1/auth/password/update:\\n  - auth.user is a required field" },
-        "error": "Request validation failed on POST /api/v1/auth/password/update:\\n  - auth.user is a required field",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/v1/auth/password/update:
+              - auth.user must be defined
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/v1/auth/password/update:
+            - auth.user must be defined
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "SCHEMA_ERROR",

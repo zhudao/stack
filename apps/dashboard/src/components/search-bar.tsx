@@ -1,15 +1,16 @@
 import React from "react";
 
-import { Search } from "lucide-react";
-import { Input } from "./ui/input";
+import { Input } from "@/components/ui";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 
-export const SearchBar = React.forwardRef<
+export const SearchBar = forwardRefIfNeeded<
   HTMLInputElement,
-  React.InputHTMLAttributes<HTMLInputElement>
+  React.ComponentProps<typeof Input>
 >((props, ref) => (
   <div className="relative">
-    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
     <Input ref={ref} className="pl-8" {...props} />
+    <MagnifyingGlassIcon className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
   </div>
 ));
 
